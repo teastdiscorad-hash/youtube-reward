@@ -3,59 +3,167 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>أجر اليوتيوب — منصة صناعة الشورتس</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="style.css" rel="stylesheet">
+    <title>أجر اليوتيوب — استوديو صناعة الشورتس المحترف</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
     <style>
-        .hero {
-            text-align: center;
-            padding: 4rem 1rem;
+        .landing-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            width: 100%;
         }
-        .hero h1 {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+
+        .landing-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 3rem;
+            position: relative;
+        }
+
+        .brand-logo-card {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.9rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 0.75rem 1.8rem;
+            border-radius: 40px;
+            backdrop-filter: blur(15px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .brand-logo-card i {
+            font-size: 1.8rem;
+            color: var(--gold);
+            filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.5));
+        }
+
+        .brand-logo-card span {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        .hero p {
-            font-size: 1.25rem;
-            color: #94a3b8;
-            max-width: 600px;
-            margin: 0 auto 3rem auto;
-            line-height: 1.8;
+
+        .hero-section {
+            text-align: center;
+            margin-bottom: 4rem;
         }
-        .tools-grid {
+
+        .hero-section h1 {
+            font-size: 3.2rem;
+            font-weight: 900;
+            line-height: 1.25;
+            margin-bottom: 1.2rem;
+            background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 50%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -1px;
+        }
+
+        .hero-section p {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            max-width: 680px;
+            margin: 0 auto 2.5rem auto;
+            line-height: 1.8;
+            font-weight: 500;
+        }
+
+        .features-pills {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 3.5rem;
+        }
+
+        .pill {
+            background: rgba(16, 185, 129, 0.12);
+            color: #34d399;
+            padding: 0.55rem 1.2rem;
+            border-radius: 30px;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 700;
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .pill-blue {
+            background: rgba(59, 130, 246, 0.12);
+            color: #60a5fa;
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .pill-purple {
+            background: rgba(168, 85, 247, 0.12);
+            color: #c084fc;
+            border-color: rgba(168, 85, 247, 0.3);
+        }
+
+        .studio-tools-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 2rem;
             max-width: 900px;
             margin: 0 auto;
         }
-        .tool-card {
+
+        .studio-card {
             background: var(--card-bg);
             border: 1px solid var(--card-border);
-            border-radius: 20px;
-            padding: 2.5rem;
+            border-radius: 1.8rem;
+            padding: 2.5rem 2rem;
             text-align: center;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
             backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             text-decoration: none;
             color: white;
             display: flex;
             flex-direction: column;
             align-items: center;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
         }
-        .tool-card:hover {
+
+        .studio-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--purple));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .studio-card:hover {
             transform: translateY(-10px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            border-color: rgba(255,255,255,0.2);
-            background: rgba(40, 50, 75, 0.8);
+            border-color: var(--card-hover-border);
+            box-shadow: 0 30px 60px rgba(99, 102, 241, 0.25);
+            background: rgba(28, 39, 62, 0.85);
         }
-        .tool-icon {
-            width: 80px;
-            height: 80px;
-            background: rgba(99, 102, 241, 0.1);
+
+        .studio-card:hover::before {
+            opacity: 1;
+        }
+
+        .studio-icon-box {
+            width: 85px;
+            height: 85px;
+            background: rgba(99, 102, 241, 0.12);
+            border: 1px solid rgba(99, 102, 241, 0.3);
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -63,98 +171,126 @@
             font-size: 2.5rem;
             color: var(--primary);
             margin-bottom: 1.5rem;
-            transition: all 0.3s ease;
+            transition: all 0.35s ease;
         }
-        .tool-card:hover .tool-icon {
+
+        .studio-card:hover .studio-icon-box {
             background: var(--primary);
             color: white;
-            box-shadow: var(--primary-glow);
+            box-shadow: 0 0 25px var(--primary-glow);
+            transform: scale(1.08);
         }
-        .tool-card h2 {
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
+
+        .studio-card h2 {
+            font-size: 1.6rem;
+            font-weight: 800;
+            margin-bottom: 0.8rem;
+            color: var(--text-main);
         }
-        .tool-card p {
-            color: #cbd5e1;
-            line-height: 1.6;
+
+        .studio-card p {
+            color: var(--text-muted);
+            line-height: 1.7;
             margin-bottom: 2rem;
+            font-size: 0.98rem;
             flex-grow: 1;
         }
-        .tool-btn {
-            background: rgba(255,255,255,0.1);
+
+        .action-link-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             color: white;
-            padding: 0.75rem 2rem;
-            border-radius: 12px;
-            font-weight: 600;
+            padding: 0.85rem 2rem;
+            border-radius: 0.85rem;
+            font-weight: 700;
             width: 100%;
             transition: all 0.3s ease;
-        }
-        .tool-card:hover .tool-btn {
-            background: var(--primary);
-        }
-        .features {
-            margin-top: 5rem;
-            display: flex;
-            justify-content: center;
-            gap: 2rem;
-            flex-wrap: wrap;
-        }
-        .feature-badge {
-            background: rgba(16, 185, 129, 0.1);
-            color: #34d399;
-            padding: 0.5rem 1rem;
-            border-radius: 30px;
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 0.5rem;
-            font-weight: 500;
+            justify-content: center;
+            gap: 0.6rem;
+            font-size: 1rem;
+        }
+
+        .studio-card:hover .action-link-btn {
+            background: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        @media (max-width: 768px) {
+            .hero-section h1 {
+                font-size: 2.2rem;
+            }
+
+            .hero-section p {
+                font-size: 1rem;
+            }
+
+            .studio-tools-grid {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+
+            .studio-card {
+                padding: 2rem 1.4rem;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- Ambient Background Glow -->
     <div class="background-elements">
         <div class="blob blob-1"></div>
         <div class="blob blob-2"></div>
     </div>
 
-    <div class="container" style="max-width: 1200px;">
-        <header class="header" style="justify-content: center; margin-bottom: 2rem;">
-            <div class="logo">
+    <div class="landing-container">
+        <!-- Top Brand Header -->
+        <header class="landing-header">
+            <div class="brand-logo-card">
                 <i class="fa-solid fa-play"></i>
-                أجر اليوتيوب
+                <span>أجر اليوتيوب</span>
             </div>
         </header>
 
-        <main class="hero">
+        <!-- Hero Section -->
+        <main class="hero-section">
             <h1>أطلق العنان لإبداعك في الشورتس</h1>
-            <p>منصة مجانية ومفتوحة للجميع. ادمج المقاطع، أزل الخلفيات السوداء، وصمم فيديوهات يوتيوب شورتس احترافية خلال ثوانٍ معدودة. اختر الأداة التي تناسب فكرتك لتبدأ فوراً.</p>
+            <p>منصة صناعة محتوى مجانية ومفتوحة للجميع. ادمج المقاطع، أزل الشاشات السوداء، وصمم فيديوهات يوتيوب شورتس احترافية خلال ثوانٍ معدودة.</p>
 
-            <div class="features">
-                <div class="feature-badge"><i class="fa-solid fa-check-circle"></i> مجاني بالكامل</div>
-                <div class="feature-badge"><i class="fa-solid fa-bolt"></i> معالجة سريعة</div>
-                <div class="feature-badge"><i class="fa-solid fa-lock-open"></i> مفتوح للجميع</div>
+            <div class="features-pills">
+                <div class="pill"><i class="fa-solid fa-circle-check"></i> مجاني بالكامل 100%</div>
+                <div class="pill pill-blue"><i class="fa-solid fa-bolt"></i> معالجة سريعة بـ FFmpeg</div>
+                <div class="pill pill-purple"><i class="fa-solid fa-wand-magic-sparkles"></i> تفريغ أسود نقي</div>
             </div>
 
-            <div class="tools-grid" style="margin-top: 4rem;">
-                <!-- Image Tool -->
-                <a href="/image" class="tool-card">
-                    <div class="tool-icon">
+            <!-- Studio Tools Grid -->
+            <div class="studio-tools-grid">
+                <!-- 1. Video + Image Tool -->
+                <a href="/image" class="studio-card">
+                    <div class="studio-icon-box">
                         <i class="fa-regular fa-image"></i>
                     </div>
                     <h2>فيديو + صورة</h2>
                     <p>أضف مقطع يوتيوب (شاشة سوداء) وقم بدمجه مع صورة ثابتة في الخلفية. مثالي للقصص، والاقتباسات، والبودكاست.</p>
-                    <div class="tool-btn">استخدم الأداة <i class="fa-solid fa-arrow-left"></i></div>
+                    <div class="action-link-btn">
+                        <span>استخدم الأداة</span>
+                        <i class="fa-solid fa-arrow-left"></i>
+                    </div>
                 </a>
 
-                <!-- Video Tool -->
-                <a href="/video" class="tool-card">
-                    <div class="tool-icon">
+                <!-- 2. Video + Video Tool -->
+                <a href="/video" class="studio-card">
+                    <div class="studio-icon-box">
                         <i class="fa-solid fa-film"></i>
                     </div>
                     <h2>فيديو + فيديو</h2>
                     <p>ادمج مقطع شاشة سوداء مع مقطع فيديو آخر بالخلفية (يوتيوب، انستقرام، تيك توك...). تتم المزامنة تلقائياً!</p>
-                    <div class="tool-btn">استخدم الأداة <i class="fa-solid fa-arrow-left"></i></div>
+                    <div class="action-link-btn">
+                        <span>استخدم الأداة</span>
+                        <i class="fa-solid fa-arrow-left"></i>
+                    </div>
                 </a>
             </div>
         </main>
