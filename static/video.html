@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>أجر اليوتيوب — فيديو + فيديو</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Ambient Glow -->
+    <div class="background-elements">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="top-nav-bar">
+                <a href="/" class="btn-home"><i class="fa-solid fa-house"></i> الرئيسية</a>
+                <span class="badge"><i class="fa-solid fa-film"></i> YouTube Shorts Studio</span>
+            </div>
+            <div class="logo-box">
+                <div class="logo-title-wrap">
+                    <i class="fa-solid fa-film logo-icon"></i>
+                    <h1>فيديو + فيديو</h1>
+                </div>
+            </div>
+            <p class="subtitle">دمج مقطع شاشة سوداء مع مقطع خلفية ديناميكي، مع مزامنة السرعة والصوت تلقائياً.</p>
+        </header>
+
+        <!-- Main Form -->
+        <main class="main-content">
+            <div class="card glass-card">
+                <form id="shortsForm" onsubmit="return false;">
+                    
+                    <!-- 1. Primary Video Link Input -->
+                    <div class="form-group">
+                        <label for="primaryUrl">
+                            <i class="fa-brands fa-youtube icon-red"></i>
+                            رابط المقطع الأساسي (يوتيوب شاشة سوداء)
+                        </label>
+                        <div class="input-with-button">
+                            <input type="url" id="primaryUrl" class="styled-input" placeholder="https://www.youtube.com/watch?v=..." required>
+                            <button type="button" id="btnFetchInfo" class="btn-secondary">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                فحص الرابط
+                            </button>
+                        </div>
+                        <small style="color: #94a3b8; margin-top: 0.5rem; display: block;">صوت هذا المقطع هو الذي سيتم استخدامه في الفيديو النهائي.</small>
+                    </div>
+
+                    <!-- Video Preview Container (Primary Video) -->
+                    <div id="videoInfoBox" class="video-info-box hidden">
+                        <img id="videoThumb" src="" alt="Thumbnail">
+                        <div class="info-details">
+                            <h3 id="videoTitle">عنوان المقطع</h3>
+                            <span class="duration-badge"><i class="fa-regular fa-clock"></i> <span id="videoDuration">--:--</span></span>
+                        </div>
+                    </div>
+
+                    <!-- 2. Background Video Link Input with Fetch Info Button -->
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label for="bgUrl">
+                            <i class="fa-solid fa-video icon-blue"></i>
+                            رابط مقطع الخلفية (يوتيوب، انستقرام، تيك توك، بنترست...)
+                        </label>
+                        <div class="input-with-button">
+                            <input type="url" id="bgUrl" class="styled-input" placeholder="ألصق رابط الفيديو الخلفي هنا..." required>
+                            <button type="button" id="btnFetchBgInfo" class="btn-secondary">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                فحص الرابط
+                            </button>
+                        </div>
+                        <small style="color: #94a3b8; margin-top: 0.5rem; display: block;">سيتم كتم صوت هذا المقطع وتعديل سرعته ليناسب طول المقطع الأساسي.</small>
+                    </div>
+
+                    <!-- Video Preview Container (Background Video) -->
+                    <div id="bgVideoInfoBox" class="video-info-box hidden">
+                        <img id="bgVideoThumb" src="" alt="Thumbnail">
+                        <div class="info-details">
+                            <h3 id="bgVideoTitle">عنوان مقطع الخلفية</h3>
+                            <span class="duration-badge"><i class="fa-regular fa-clock"></i> <span id="bgVideoDuration">--:--</span></span>
+                        </div>
+                    </div>
+
+                    <!-- 3. Layout Options Selector (Visual Cards) -->
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label>
+                            <i class="fa-solid fa-layer-group icon-purple"></i>
+                            طريقة دمج الشاشة السوداء فوق الفيديو الخلفي
+                        </label>
+                        <div class="layouts-grid">
+                            <label class="layout-card active">
+                                <input type="radio" name="layout" value="black_screen_transparent" checked>
+                                <div class="layout-preview layout-transparent-screen">
+                                    <div class="box-bg-img">الفيديو الخلفي</div>
+                                    <div class="box-overlay-txt">✨ تفريغ الأسود والنص ناصع 100%</div>
+                                </div>
+                                <span class="layout-name">تفريغ الأسود الشفاف (ألوان طبيعية)</span>
+                            </label>
+
+                            <label class="layout-card">
+                                <input type="radio" name="layout" value="screen_blend_mode">
+                                <div class="layout-preview layout-colorkey">
+                                    <div class="box-bg-img">الفيديو الخلفي</div>
+                                    <div class="box-overlay-txt">🔆 إضاءة الشاشة (Screen Mode)</div>
+                                </div>
+                                <span class="layout-name">إضاءة النص الشفاف (Screen Blend)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Fine-Tuning Controls Accordion / Panel -->
+                    <div class="advanced-settings-box">
+                        <div class="settings-header" id="toggleSettings">
+                            <span><i class="fa-solid fa-sliders icon-gold"></i> إعدادات الضبط الدقيق والسرعة (اختياري)</span>
+                            <i class="fa-solid fa-chevron-down arrow-icon"></i>
+                        </div>
+                        <div class="settings-content hidden" id="settingsContent">
+                            <!-- Color Key Sensitivity Slider -->
+                            <div class="control-row" id="toleranceGroup">
+                                <div class="control-label">
+                                    <span>درجة تفريغ الأسود:</span>
+                                    <strong id="toleranceVal" class="value-badge">0.25</strong>
+                                </div>
+                                <input type="range" id="keyTolerance" min="0.01" max="0.5" step="0.01" value="0.25">
+                                <div class="range-labels">
+                                    <span>عالي الدقة</span>
+                                    <span>إزالة واسعة</span>
+                                </div>
+                            </div>
+
+                            <!-- Video Overlay Position -->
+                            <div class="control-row" id="positionGroup">
+                                <span class="control-label">موقع النص/الفيديو فوق الخلفية:</span>
+                                <div class="position-selector">
+                                    <label class="pos-option">
+                                        <input type="radio" name="video_position" value="top">
+                                        <div class="pos-btn"><i class="fa-solid fa-arrow-up"></i> أعلى</div>
+                                    </label>
+                                    <label class="pos-option active">
+                                        <input type="radio" name="video_position" value="center" checked>
+                                        <div class="pos-btn"><i class="fa-solid fa-arrows-to-dot"></i> منتصف</div>
+                                    </label>
+                                    <label class="pos-option">
+                                        <input type="radio" name="video_position" value="bottom">
+                                        <div class="pos-btn"><i class="fa-solid fa-arrow-down"></i> أسفل</div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Trimming Inputs -->
+                            <div class="control-row inline-controls">
+                                <div>
+                                    <span class="control-label">وقت البداية (ثانية):</span>
+                                    <input type="number" id="startTime" class="styled-input" placeholder="0" min="0" value="0">
+                                </div>
+                                <div>
+                                    <span class="control-label">وقت النهاية (ثانية):</span>
+                                    <input type="number" id="endTime" class="styled-input" placeholder="تلقائي (كامل المقطع)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="button" id="btnSubmit" class="btn-primary">
+                        <i class="fa-solid fa-film"></i>
+                        ابدأ دمج الفيديوهات والمزامنة
+                    </button>
+                </form>
+            </div>
+
+            <!-- Processing Status / Loading state -->
+            <div id="statusBox" class="card status-card hidden">
+                <div class="progress-header">
+                    <h3><i class="fa-solid fa-gear fa-spin text-primary"></i> جاري العمل على الشورتس...</h3>
+                    <span id="statusMessage" class="status-text">بدء التحضير...</span>
+                </div>
+                
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" id="progressBar"></div>
+                </div>
+                
+                <div class="steps-indicator">
+                    <div class="step step-1 active"><i class="fa-solid fa-cloud-arrow-down"></i> تحميل المقاطع</div>
+                    <div class="step step-2"><i class="fa-solid fa-wand-magic"></i> دمج وتفريغ السواد</div>
+                    <div class="step step-3"><i class="fa-solid fa-check"></i> جاهز</div>
+                </div>
+            </div>
+
+            <!-- Success Download state -->
+            <div id="resultBox" class="card result-card hidden">
+                <div class="success-icon"><i class="fa-solid fa-circle-check"></i></div>
+                <h2>تم الانتهاء بنجاح!</h2>
+                <p>مقطع الشورتس الخاص بك جاهز للتنزيل والنشر مباشرة.</p>
+                <div class="shorts-player-container" style="margin-bottom: 1.5rem;">
+                    <video id="outputVideoPlayer" controls width="320" height="568">
+                        متصفحك لا يدعم مشغل الفيديو.
+                    </video>
+                </div>
+                <a href="#" id="downloadBtn" class="btn-primary btn-lg" target="_blank" download>
+                    <i class="fa-solid fa-download"></i> تنزيل الفيديو الآن (MP4)
+                </a>
+            </div>
+
+            <!-- Error Box -->
+            <div id="errorBox" class="error-box hidden">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span id="errorMessage">حدث خطأ ما. يرجى المحاولة مرة أخرى.</span>
+            </div>
+        </main>
+    </div>
+
+    <script src="video.js"></script>
+</body>
+</html>

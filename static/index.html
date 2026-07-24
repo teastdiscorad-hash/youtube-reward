@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>أجر اليوتيوب — منصة صناعة الشورتس</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+    <style>
+        .hero {
+            text-align: center;
+            padding: 4rem 1rem;
+        }
+        .hero h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero p {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            max-width: 600px;
+            margin: 0 auto 3rem auto;
+            line-height: 1.8;
+        }
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .tool-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 2.5rem;
+            text-align: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(20px);
+            text-decoration: none;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .tool-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            border-color: rgba(255,255,255,0.2);
+            background: rgba(40, 50, 75, 0.8);
+        }
+        .tool-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            color: var(--primary);
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        .tool-card:hover .tool-icon {
+            background: var(--primary);
+            color: white;
+            box-shadow: var(--primary-glow);
+        }
+        .tool-card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .tool-card p {
+            color: #cbd5e1;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+            flex-grow: 1;
+        }
+        .tool-btn {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+        .tool-card:hover .tool-btn {
+            background: var(--primary);
+        }
+        .features {
+            margin-top: 5rem;
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        .feature-badge {
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            padding: 0.5rem 1rem;
+            border-radius: 30px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="background-elements">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="container" style="max-width: 1200px;">
+        <header class="header" style="justify-content: center; margin-bottom: 2rem;">
+            <div class="logo">
+                <i class="fa-solid fa-play"></i>
+                أجر اليوتيوب
+            </div>
+        </header>
+
+        <main class="hero">
+            <h1>أطلق العنان لإبداعك في الشورتس</h1>
+            <p>منصة مجانية ومفتوحة للجميع. ادمج المقاطع، أزل الخلفيات السوداء، وصمم فيديوهات يوتيوب شورتس احترافية خلال ثوانٍ معدودة. اختر الأداة التي تناسب فكرتك لتبدأ فوراً.</p>
+
+            <div class="features">
+                <div class="feature-badge"><i class="fa-solid fa-check-circle"></i> مجاني بالكامل</div>
+                <div class="feature-badge"><i class="fa-solid fa-bolt"></i> معالجة سريعة</div>
+                <div class="feature-badge"><i class="fa-solid fa-lock-open"></i> مفتوح للجميع</div>
+            </div>
+
+            <div class="tools-grid" style="margin-top: 4rem;">
+                <!-- Image Tool -->
+                <a href="/image" class="tool-card">
+                    <div class="tool-icon">
+                        <i class="fa-regular fa-image"></i>
+                    </div>
+                    <h2>فيديو + صورة</h2>
+                    <p>أضف مقطع يوتيوب (شاشة سوداء) وقم بدمجه مع صورة ثابتة في الخلفية. مثالي للقصص، والاقتباسات، والبودكاست.</p>
+                    <div class="tool-btn">استخدم الأداة <i class="fa-solid fa-arrow-left"></i></div>
+                </a>
+
+                <!-- Video Tool -->
+                <a href="/video" class="tool-card">
+                    <div class="tool-icon">
+                        <i class="fa-solid fa-film"></i>
+                    </div>
+                    <h2>فيديو + فيديو</h2>
+                    <p>ادمج مقطع شاشة سوداء مع مقطع فيديو آخر بالخلفية (يوتيوب، انستقرام، تيك توك...). تتم المزامنة تلقائياً!</p>
+                    <div class="tool-btn">استخدم الأداة <i class="fa-solid fa-arrow-left"></i></div>
+                </a>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>أجر اليوتيوب — فيديو + صورة</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Ambient Glow -->
+    <div class="background-elements">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="top-nav-bar">
+                <a href="/" class="btn-home"><i class="fa-solid fa-house"></i> الرئيسية</a>
+                <span class="badge"><i class="fa-solid fa-wand-magic-sparkles"></i> YouTube Shorts Studio</span>
+            </div>
+            <div class="logo-box">
+                <div class="logo-title-wrap">
+                    <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
+                    <h1>فيديو + صورة</h1>
+                </div>
+            </div>
+            <p class="subtitle">دمج مقطع شاشة سوداء مع صورة خلفية ثابتة، وتفريغ السواد بنقاء 100%.</p>
+        </header>
+
+        <!-- Main Form -->
+        <main class="main-content">
+            <div class="card glass-card">
+                <form id="shortsForm" onsubmit="return false;">
+                    
+                    <!-- 1. YouTube Link Input -->
+                    <div class="form-group">
+                        <label for="youtubeUrl">
+                            <i class="fa-brands fa-youtube icon-red"></i>
+                            رابط مقطع اليوتيوب (مقطع النص/الشاشة السوداء)
+                        </label>
+                        <div class="input-with-button">
+                            <input type="url" id="youtubeUrl" class="styled-input" placeholder="https://www.youtube.com/watch?v=..." required>
+                            <button type="button" id="btnFetchInfo" class="btn-secondary">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                فحص الرابط
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Video Preview Container (Initially Hidden) -->
+                    <div id="videoInfoBox" class="video-info-box hidden">
+                        <img id="videoThumb" src="" alt="غلاف الفيديو">
+                        <div class="info-details">
+                            <h3 id="videoTitle">عنوان المقطع</h3>
+                            <span class="duration-badge"><i class="fa-regular fa-clock"></i> <span id="videoDuration">--:--</span></span>
+                        </div>
+                    </div>
+
+                    <!-- 2. Image Upload Box -->
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label>
+                            <i class="fa-regular fa-image icon-gold"></i>
+                            الصورة الخلفية الرئيسية (مقاس 9:16 للشورتس)
+                        </label>
+                        <div class="drop-zone" id="dropZone">
+                            <input type="file" id="imageInput" accept="image/*" class="file-input" required>
+                            <div class="drop-zone-content" id="dropZoneContent">
+                                <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
+                                <p class="drop-title">اضغط هنا لرفع الصورة الخلفية أو اسحبها إلى هنا</p>
+                                <span class="drop-hint">ستظهر الصورة كخلفية كاملة مقاس 9:16 بألوانها الأصلية بدون تغيير</span>
+                            </div>
+                            <div class="image-preview-container hidden" id="imagePreviewBox">
+                                <img id="imagePreview" src="" alt="معاينة الصورة">
+                                <button type="button" class="btn-remove-img" id="btnRemoveImg">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="two-columns">
+                        <!-- 3. Layout Options Selector -->
+                        <div class="form-group">
+                            <label for="layoutSelect"><i class="fa-solid fa-layer-group icon-purple"></i> طريقة الدمج والتفريغ</label>
+                            <div class="custom-select-wrapper">
+                                <select id="layoutSelect" name="layout" class="styled-input">
+                                    <option value="black_screen_transparent" selected>تفريغ الأسود النقي (ألوان طبيعية 100%)</option>
+                                    <option value="screen_blend_mode">إضاءة النص الشفاف (Screen Blend)</option>
+                                    <option value="split_top_image">قسمين: صورة بالأعلى وفيديو بالأسفل</option>
+                                    <option value="center_image_blur_bg">صورة بمركز الشاشة + خلفية فيديو غباش</option>
+                                </select>
+                                <i class="fa-solid fa-chevron-down select-icon"></i>
+                            </div>
+                        </div>
+
+                        <!-- 4. Key Tolerance -->
+                        <div class="form-group" id="toleranceGroup">
+                            <label for="inputKeyTolerance">
+                                <i class="fa-solid fa-sliders icon-purple"></i> 
+                                درجة تفريغ الأسود 
+                                <span id="valKeyTolerance" class="value-badge">25%</span>
+                            </label>
+                            <input type="range" id="inputKeyTolerance" min="0.10" max="0.45" step="0.01" value="0.25">
+                            <div class="range-labels">
+                                <span>عالي الدقة</span>
+                                <span>إزالة واسعة</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Video Position Selection -->
+                    <div class="form-group" id="positionGroup">
+                        <label><i class="fa-solid fa-arrows-up-down icon-purple"></i> موقع النص/الفيديو فوق الصورة</label>
+                        <div class="position-selector">
+                            <label class="pos-option">
+                                <input type="radio" name="video_position" value="top">
+                                <div class="pos-btn"><i class="fa-solid fa-arrow-up"></i> أعلى</div>
+                            </label>
+                            <label class="pos-option active">
+                                <input type="radio" name="video_position" value="center" checked>
+                                <div class="pos-btn"><i class="fa-solid fa-arrows-to-dot"></i> منتصف</div>
+                            </label>
+                            <label class="pos-option">
+                                <input type="radio" name="video_position" value="bottom">
+                                <div class="pos-btn"><i class="fa-solid fa-arrow-down"></i> أسفل</div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Time Range Controls -->
+                    <div class="form-group time-group">
+                        <label><i class="fa-solid fa-stopwatch icon-red"></i> تحديد جزء معين من الفيديو (اختياري)</label>
+                        <div class="time-inputs">
+                            <div class="time-field">
+                                <span>وقت البداية (ثانية)</span>
+                                <input type="number" id="inputStartTime" class="styled-input" placeholder="0" min="0" value="0">
+                            </div>
+                            <div class="time-field">
+                                <span>وقت النهاية (ثانية)</span>
+                                <input type="number" id="inputEndTime" class="styled-input" placeholder="تلقائي (كامل المقطع)" min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Button -->
+                    <button type="button" id="btnSubmit" class="btn-primary">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        إنتاج فيديو الشورتس بالدمج الشفاف
+                    </button>
+                </form>
+            </div>
+
+            <!-- Processing Status / Loading state -->
+            <div id="statusBox" class="card status-card hidden">
+                <div class="progress-header">
+                    <h3><i class="fa-solid fa-gear fa-spin text-primary"></i> جاري العمل على الشورتس...</h3>
+                    <span id="statusMessage" class="status-text">بدء التحضير...</span>
+                </div>
+                
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" id="progressBar"></div>
+                </div>
+                
+                <div class="steps-indicator">
+                    <div class="step step-1 active"><i class="fa-solid fa-cloud-arrow-down"></i> تحميل المقطع</div>
+                    <div class="step step-2"><i class="fa-solid fa-wand-magic"></i> دمج وتفريغ السواد</div>
+                    <div class="step step-3"><i class="fa-solid fa-check"></i> جاهز</div>
+                </div>
+            </div>
+
+            <!-- Success Download state -->
+            <div id="resultBox" class="card result-card hidden">
+                <div class="success-icon"><i class="fa-solid fa-circle-check"></i></div>
+                <h2>تم الانتهاء بنجاح!</h2>
+                <p>مقطع الشورتس الشفاف الخاص بك جاهز للتنزيل والنشر مباشرة.</p>
+                <div class="shorts-player-container" style="margin-bottom: 1.5rem;">
+                    <video id="outputVideoPlayer" controls width="320" height="568">
+                        متصفحك لا يدعم مشغل الفيديو.
+                    </video>
+                </div>
+                <a href="#" id="downloadBtn" class="btn-primary btn-lg" target="_blank" download>
+                    <i class="fa-solid fa-download"></i> تنزيل الفيديو الآن (MP4)
+                </a>
+            </div>
+
+            <!-- Error Box -->
+            <div id="errorBox" class="error-box hidden">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span id="errorMessage">حدث خطأ ما. يرجى المحاولة مرة أخرى.</span>
+            </div>
+        </main>
+    </div>
+
+    <script src="image.js"></script>
+</body>
+</html>
