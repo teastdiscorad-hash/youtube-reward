@@ -21,6 +21,10 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 
 app = FastAPI(title="أجر اليوتيوب — صانع شورتس يوتيوب الدمجي", version="2.0")
 
+@app.get("/")
+async def get_root_page():
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
 @app.get("/image")
 @app.get("/Image")
 async def get_image_page():
