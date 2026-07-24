@@ -45,6 +45,7 @@ async def get_root_page():
     raise HTTPException(status_code=404, detail="Index Page Not Found")
 
 @app.get("/image")
+@app.get("/image/")
 @app.get("/Image")
 async def get_image_page():
     f = find_static_file("image.html")
@@ -53,6 +54,7 @@ async def get_image_page():
     raise HTTPException(status_code=404, detail="Image Page Not Found")
 
 @app.get("/video")
+@app.get("/video/")
 @app.get("/Video")
 async def get_video_page():
     f = find_static_file("video.html")
