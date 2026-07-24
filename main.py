@@ -21,28 +21,50 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 
 app = FastAPI(title="أجر اليوتيوب — صانع شورتس يوتيوب الدمجي", version="2.0")
 
+def find_static_file(name: str) -> Optional[str]:
+    if not os.path.exists(STATIC_DIR):
+        return None
+    p = os.path.join(STATIC_DIR, name)
+    if os.path.isfile(p):
+        return p
+    name_lower = name.lower()
+    for f in os.listdir(STATIC_DIR):
+        if f.lower() == name_lower:
+            return os.path.join(STATIC_DIR, f)
+    name_html = f"{name.lower()}.html"
+    for f in os.listdir(STATIC_DIR):
+        if f.lower() == name_html:
+            return os.path.join(STATIC_DIR, f)
+    return None
+
 @app.get("/")
 async def get_root_page():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    f = find_static_file("index.html")
+    if f:
+        return FileResponse(f)
+    raise HTTPException(status_code=404, detail="Index Page Not Found")
 
 @app.get("/image")
 @app.get("/Image")
 async def get_image_page():
-    return FileResponse(os.path.join(STATIC_DIR, "image.html"))
+    f = find_static_file("image.html")
+    if f:
+        return FileResponse(f)
+    raise HTTPException(status_code=404, detail="Image Page Not Found")
 
 @app.get("/video")
 @app.get("/Video")
 async def get_video_page():
-    return FileResponse(os.path.join(STATIC_DIR, "video.html"))
+    f = find_static_file("video.html")
+    if f:
+        return FileResponse(f)
+    raise HTTPException(status_code=404, detail="Video Page Not Found")
 
 @app.get("/{filename}")
 async def serve_static_file(filename: str):
-    file_path = os.path.join(STATIC_DIR, filename)
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
-    html_path = os.path.join(STATIC_DIR, f"{filename}.html")
-    if os.path.isfile(html_path):
-        return FileResponse(html_path)
+    f = find_static_file(filename)
+    if f:
+        return FileResponse(f)
     raise HTTPException(status_code=404, detail="Page Not Found")
 
 # دعم CORS للاتصال السلس من المتصفح
