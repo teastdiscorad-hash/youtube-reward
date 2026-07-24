@@ -35,6 +35,16 @@ async def get_image_page():
 async def get_video_page():
     return FileResponse(os.path.join(STATIC_DIR, "video.html"))
 
+@app.get("/{filename}")
+async def serve_static_file(filename: str):
+    file_path = os.path.join(STATIC_DIR, filename)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    html_path = os.path.join(STATIC_DIR, f"{filename}.html")
+    if os.path.isfile(html_path):
+        return FileResponse(html_path)
+    raise HTTPException(status_code=404, detail="Page Not Found")
+
 # دعم CORS للاتصال السلس من المتصفح
 app.add_middleware(
     CORSMiddleware,
