@@ -15,6 +15,12 @@ TEMP_DIR = os.path.join(BASE_DIR, "temp")
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
+os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
+
+app = FastAPI(title="أجر اليوتيوب — صانع شورتس يوتيوب الدمجي", version="2.0")
+
 # --- TEST ROUTE FOR COBALT ---
 @app.get("/api/test-cobalt")
 async def test_cobalt_route():
@@ -54,12 +60,6 @@ async def test_cobalt_route():
     except Exception as e:
         return {"error": str(e)}
 # -----------------------------
-
-os.makedirs(TEMP_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(STATIC_DIR, exist_ok=True)
-
-app = FastAPI(title="أجر اليوتيوب — صانع شورتس يوتيوب الدمجي", version="2.0")
 
 def find_static_file(name: str) -> Optional[str]:
     if not os.path.exists(STATIC_DIR):
