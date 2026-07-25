@@ -7,6 +7,13 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import yt_dlp
+import traceback
+
+try:
+    from pytubefix import YouTube
+    PYTUBEFIX_AVAILABLE = True
+except ImportError:
+    PYTUBEFIX_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("processor")
@@ -98,9 +105,12 @@ def fetch_via_yt1s(youtube_url: str):
     try:
         search_data = urllib.parse.urlencode({'q': youtube_url, 'vt': 'home'}).encode('utf-8')
         req = urllib.request.Request("https://yt1s.com/api/ajaxSearch/index", data=search_data, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Accept': '*/*'
+            'Accept': '*/*',
+            'Origin': 'https://yt1s.com',
+            'Referer': 'https://yt1s.com/en361',
+            'Accept-Language': 'en-US,en;q=0.9'
         })
         with urllib.request.urlopen(req, timeout=10) as resp:
             res = json.loads(resp.read().decode('utf-8'))
@@ -119,9 +129,12 @@ def fetch_via_yt1s(youtube_url: str):
                 if vid and k_val:
                     conv_data = urllib.parse.urlencode({'vid': vid, 'k': k_val}).encode('utf-8')
                     req_conv = urllib.request.Request("https://yt1s.com/api/ajaxConvert/convert", data=conv_data, headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
                         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept': '*/*'
+                        'Accept': '*/*',
+                        'Origin': 'https://yt1s.com',
+                        'Referer': 'https://yt1s.com/en361',
+                        'Accept-Language': 'en-US,en;q=0.9'
                     })
                     with urllib.request.urlopen(req_conv, timeout=15) as conv_resp:
                         conv_res = json.loads(conv_resp.read().decode('utf-8'))
@@ -137,9 +150,12 @@ def fetch_via_y2mate(youtube_url: str):
     try:
         search_data = urllib.parse.urlencode({'k_query': youtube_url, 'q_auto': 1, 'ajax': 1}).encode('utf-8')
         req = urllib.request.Request("https://www.y2mate.com/mates/analyzeV2/ajax", data=search_data, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
             'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Accept': '*/*'
+            'Accept': '*/*',
+            'Origin': 'https://www.y2mate.com',
+            'Referer': 'https://www.y2mate.com/en885',
+            'Accept-Language': 'en-US,en;q=0.9'
         })
         with urllib.request.urlopen(req, timeout=10) as resp:
             res = json.loads(resp.read().decode('utf-8'))
@@ -157,9 +173,12 @@ def fetch_via_y2mate(youtube_url: str):
                 if vid and k_val:
                     conv_data = urllib.parse.urlencode({'vid': vid, 'k': k_val}).encode('utf-8')
                     req_conv = urllib.request.Request("https://www.y2mate.com/mates/convertV2/index", data=conv_data, headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
                         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept': '*/*'
+                        'Accept': '*/*',
+                        'Origin': 'https://www.y2mate.com',
+                        'Referer': 'https://www.y2mate.com/en885',
+                        'Accept-Language': 'en-US,en;q=0.9'
                     })
                     with urllib.request.urlopen(req_conv, timeout=15) as conv_resp:
                         conv_res = json.loads(conv_resp.read().decode('utf-8'))
@@ -259,7 +278,22 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
             except Exception as e:
                 logger.warning(f"Failed to download from web API dlink: {e}")
 
-    # 3. طبقة yt-dlp مع عملاء اللاعبين المضمونة
+    # 3. طبقة Pytubefix (حل ذكي ومضمون جداً)
+    if PYTUBEFIX_AVAILABLE:
+        try:
+            logger.info("Trying pytubefix fallback...")
+            yt = YouTube(youtube_url)
+            ys = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+            if ys:
+                logger.info(f"Downloading with pytubefix: {ys.url[:50]}...")
+                ys.download(output_path=os.path.dirname(final_mp4), filename=os.path.basename(final_mp4))
+                if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
+                    logger.info("SUCCESS download via pytubefix")
+                    return final_mp4, get_video_info(youtube_url)
+        except Exception as e:
+            logger.warning(f"Pytubefix fallback failed: {e}")
+
+    # 4. طبقة yt-dlp مع عملاء اللاعبين المضمونة
     bulletproof_clients = [
         ['android_vr'],
         ['android_creator'],
