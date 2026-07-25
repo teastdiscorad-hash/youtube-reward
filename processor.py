@@ -4,6 +4,7 @@ import subprocess
 import logging
 import json
 import uuid
+import time
 import urllib.request
 import urllib.parse
 import yt_dlp
@@ -18,6 +19,39 @@ MOBILE_USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
 ]
 
+# -------------------------------------------------------------------
+# قائمة ثابتة من خوادم Invidious الموثوقة (تعمل server-to-server)
+# لا تعتمد على cobalt.wiki الذي يفشل من IPs خوادم السحابة
+# -------------------------------------------------------------------
+INVIDIOUS_INSTANCES = [
+    "https://inv.tux.pizza",
+    "https://invidious.nerdvpn.de",
+    "https://invidious.privacyredirect.com",
+    "https://invidious.perennialte.ch",
+    "https://iv.melmac.space",
+    "https://invidious.fdn.fr",
+    "https://invidious.drgns.space",
+    "https://invidious.incogniweb.net",
+    "https://invidious.slipfox.xyz",
+    "https://vid.puffyan.us",
+    "https://invidious.io.lol",
+    "https://invidious.private.coffee",
+    "https://yewtu.be",
+    "https://invidious.projectsegfau.lt",
+]
+
+# -------------------------------------------------------------------
+# خوادم Piped كبديل ثانٍ
+# -------------------------------------------------------------------
+PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://pipedapi.adminforge.de",
+    "https://pipedapi.tokhmi.xyz",
+    "https://pipedapi.moomoo.me",
+    "https://pipedapi.syncpundit.io",
+]
+
+
 def find_cookie_file() -> str:
     """البحث عن ملف الكوكيز في المسارات المحتملة"""
     possible_paths = [
@@ -30,56 +64,132 @@ def find_cookie_file() -> str:
             return p
     return None
 
+
 def extract_youtube_id(url: str) -> str:
     match = re.search(r'(?:v=|\/|be\/|shorts\/)([a-zA-Z0-9_-]{11})', url)
     return match.group(1) if match else None
 
-def fetch_from_invidious_or_piped(video_id: str):
-    """جلب بيانات المقطع عبر خدمات Invidious/Piped العامة"""
-    instances = [
-        f"https://pipedapi.kavin.rocks/streams/{video_id}",
-        f"https://inv.tux.pizza/api/v1/videos/{video_id}",
-        f"https://invidious.nerdvpn.de/api/v1/videos/{video_id}"
-    ]
-    for inst in instances:
+
+def _safe_download_url(url: str, output_path: str, timeout: int = 60) -> bool:
+    """تحميل ملف من رابط مباشر مع دعم ملفات الميديا الكبيرة"""
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': MOBILE_USER_AGENTS[0],
+            'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com'
+        })
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            chunk_size = 1024 * 1024  # 1MB chunks
+            with open(output_path, 'wb') as f:
+                while True:
+                    chunk = resp.read(chunk_size)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        return size > 10000  # minimum 10KB
+    except Exception as e:
+        logger.warning(f"Direct download failed from {url[:60]}: {e}")
+        return False
+
+
+def fetch_from_invidious(video_id: str) -> dict:
+    """جلب معلومات المقطع عبر Invidious"""
+    for base in INVIDIOUS_INSTANCES:
         try:
-            req = urllib.request.Request(inst, headers={'User-Agent': MOBILE_USER_AGENTS[1]})
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            url = f"{base}/api/v1/videos/{video_id}"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': MOBILE_USER_AGENTS[1],
+                'Accept': 'application/json'
+            })
+            with urllib.request.urlopen(req, timeout=8) as resp:
                 if resp.getcode() == 200:
                     data = json.loads(resp.read().decode('utf-8'))
-                    title = data.get('title') or data.get('videoTitle')
+                    title = data.get('title', 'مقطع يوتيوب')
+                    dur = data.get('lengthSeconds', 90)
                     thumb = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+                    # استخراج رابط stream مباشر
+                    streams = []
+                    for fmt in data.get('adaptiveFormats', []):
+                        if fmt.get('type', '').startswith('video/mp4'):
+                            streams.append((fmt.get('bitrate', 0), fmt.get('url', '')))
+                    for fmt in data.get('formatStreams', []):
+                        if 'mp4' in fmt.get('type', ''):
+                            streams.append((999999, fmt.get('url', '')))
+                    
+                    stream_url = None
+                    if streams:
+                        streams.sort(key=lambda x: x[0], reverse=True)
+                        stream_url = streams[0][1]
+                    
                     return {
-                        'id': video_id,
-                        'title': title or 'مقطع يوتيوب',
-                        'duration': data.get('duration', 90),
-                        'duration_string': 'مقطع يوتيوب',
-                        'thumbnail': thumb
+                        'title': title,
+                        'duration': dur,
+                        'thumbnail': thumb,
+                        'stream_url': stream_url,
+                        'instance': base
                     }
         except Exception as e:
-            logger.warning(f"Invidious/Piped fallback failed on {inst}: {e}")
+            logger.warning(f"Invidious {base} failed: {e}")
     return None
+
+
+def fetch_from_piped(video_id: str) -> dict:
+    """جلب معلومات وروابط التدفق عبر Piped API"""
+    for base in PIPED_INSTANCES:
+        try:
+            url = f"{base}/streams/{video_id}"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': MOBILE_USER_AGENTS[0],
+                'Accept': 'application/json'
+            })
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                if resp.getcode() == 200:
+                    data = json.loads(resp.read().decode('utf-8'))
+                    title = data.get('title', 'مقطع يوتيوب')
+                    dur = data.get('duration', 90)
+                    thumb = data.get('thumbnailUrl') or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+                    
+                    # أفضل رابط تدفق مباشر
+                    stream_url = None
+                    best_bitrate = 0
+                    for s in data.get('videoStreams', []):
+                        bitrate = s.get('bitrate', 0)
+                        fmt = s.get('format', '')
+                        if fmt in ('MP4', 'MPEG_4') and bitrate > best_bitrate:
+                            best_bitrate = bitrate
+                            stream_url = s.get('url')
+                    
+                    # fallback: first available stream
+                    if not stream_url and data.get('videoStreams'):
+                        stream_url = data['videoStreams'][0].get('url')
+                    
+                    return {
+                        'title': title,
+                        'duration': dur,
+                        'thumbnail': thumb,
+                        'stream_url': stream_url,
+                        'instance': base
+                    }
+        except Exception as e:
+            logger.warning(f"Piped {base} failed: {e}")
+    return None
+
 
 def get_video_info(youtube_url: str):
     """
-    جلب معلومات مقطع اليوتيوب بآلية متعددة الطبقات تمنع الحظر كلياً:
-    1. YouTube oEmbed API الرسمية
-    2. yt-dlp مع تدوير عملاء البلاير ورؤوس الموبايل + cookies.txt
-    3. Invidious / Piped APIs العامة
-    4. Fallback آمن متكامل برابط المصغرة القياسي
+    جلب معلومات المقطع بطبقات متعددة مضمونة.
     """
     video_id = extract_youtube_id(youtube_url)
-    
-    # 1. الطبقة الأولى: YouTube oEmbed API (سريعة، مجانية، لا تخضع لتحدي البوتات)
+
+    # 1. YouTube oEmbed (سريع وموثوق للعنوان والصورة المصغرة)
     try:
         oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(youtube_url)}&format=json"
         req = urllib.request.Request(oembed_url, headers={'User-Agent': MOBILE_USER_AGENTS[0]})
         with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.getcode() == 200:
                 data = json.loads(resp.read().decode('utf-8'))
-                thumb = data.get('thumbnail_url')
-                if not thumb and video_id:
-                    thumb = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+                thumb = data.get('thumbnail_url') or (f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else "")
                 return {
                     'id': video_id or "youtube_video",
                     'title': data.get('title', 'مقطع يوتيوب'),
@@ -88,30 +198,49 @@ def get_video_info(youtube_url: str):
                     'thumbnail': thumb
                 }
     except Exception as e:
-        logger.warning(f"oEmbed fetch skipped: {e}")
+        logger.warning(f"oEmbed failed: {e}")
 
-    # 2. الطبقة الثانية: yt-dlp مع مصفوفة العملاء المتقدمة وتدوير User-Agent
-    player_clients = ['ios', 'android', 'web_creator', 'mweb', 'tv_embedded']
+    # 2. Invidious
+    if video_id:
+        result = fetch_from_invidious(video_id)
+        if result:
+            dur = result['duration']
+            dur_str = f"{int(dur // 60)} دقيقة و {int(dur % 60)} ثانية" if dur else "غير محدد"
+            return {
+                'id': video_id,
+                'title': result['title'],
+                'duration': dur,
+                'duration_string': dur_str,
+                'thumbnail': result['thumbnail']
+            }
+
+    # 3. Piped
+    if video_id:
+        result = fetch_from_piped(video_id)
+        if result:
+            dur = result['duration']
+            dur_str = f"{int(dur // 60)} دقيقة و {int(dur % 60)} ثانية" if dur else "غير محدد"
+            return {
+                'id': video_id,
+                'title': result['title'],
+                'duration': dur,
+                'duration_string': dur_str,
+                'thumbnail': result['thumbnail']
+            }
+
+    # 4. yt-dlp (آخر محاولة)
     cookie_path = find_cookie_file()
-    
-    for idx, client in enumerate(player_clients):
+    for client in ['ios', 'android', 'mweb', 'tv_embedded']:
         try:
-            ua = MOBILE_USER_AGENTS[idx % len(MOBILE_USER_AGENTS)]
             ydl_opts = {
                 'quiet': True,
                 'no_warnings': True,
-                'socket_timeout': 5,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': [client],
-                        'player_skip': ['webpage', 'configs']
-                    }
-                },
-                'http_headers': {'User-Agent': ua}
+                'socket_timeout': 8,
+                'extractor_args': {'youtube': {'player_client': [client]}},
+                'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
             }
             if cookie_path:
                 ydl_opts['cookiefile'] = cookie_path
-                
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
                 dur = info.get('duration') or 0
@@ -124,15 +253,9 @@ def get_video_info(youtube_url: str):
                     'thumbnail': info.get('thumbnail') or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
                 }
         except Exception as err:
-            logger.warning(f"yt-dlp info failed with client {client}: {err}")
+            logger.warning(f"yt-dlp info failed ({client}): {err}")
 
-    # 3. الطبقة الثالثة: الاستعلام عبر واجهات Invidious/Piped العامة
-    if video_id:
-        info_api = fetch_from_invidious_or_piped(video_id)
-        if info_api:
-            return info_api
-
-    # 4. الطبقة الرابعة: Fallback آمن مطلق لضمان ألا تظهر أي أخطاء للمستخدم
+    # 5. Fallback مطلق
     thumb_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
     return {
         'id': video_id or "unknown",
@@ -142,119 +265,95 @@ def get_video_info(youtube_url: str):
         'thumbnail': thumb_url
     }
 
-def download_via_public_api(media_url: str, output_path: str) -> bool:
-    """محاولة تحميل المقطع مباشرة عبر شبكة خوادم Cobalt كبديل ذكي لـ yt-dlp"""
-    if not media_url:
-        return False
-        
-    try:
-        req = urllib.request.Request("https://instances.cobalt.wiki/instances.json", headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            
-        # فلترة السيرفرات الموثوقة والتي تدعم الواجهة البرمجية (API)
-        working_apis = []
-        for inst in data:
-            api_url = inst.get('api')
-            # Trust levels: trusted or some other good status, and cors is enabled
-            if api_url and inst.get('cors') == 1:
-                working_apis.append(api_url)
-                
-        # محاولة التحميل من أول 5 سيرفرات تعمل كطبقات حماية
-        for api_base in working_apis[:8]:
-            try:
-                payload = json.dumps({"url": media_url}).encode('utf-8')
-                req_dl = urllib.request.Request(
-                    api_base,
-                    data=payload,
-                    headers={
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                        "User-Agent": MOBILE_USER_AGENTS[0]
-                    }
-                )
-                with urllib.request.urlopen(req_dl, timeout=8) as resp_dl:
-                    if resp_dl.getcode() == 200:
-                        res_data = json.loads(resp_dl.read().decode('utf-8'))
-                        dl_url = res_data.get('url')
-                        if dl_url:
-                            urllib.request.urlretrieve(dl_url, output_path)
-                            if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-                                logger.info(f"نجح التحميل عبر السيرفر الذكي: {api_base}")
-                                return True
-            except Exception as loop_e:
-                continue
-                
-    except Exception as e:
-        logger.warning(f"Failed to fetch Cobalt instances: {e}")
-
-    # Fallback to Piped if YouTube
-    video_id = extract_youtube_id(media_url)
-    if video_id:
-        try:
-            piped_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
-            req = urllib.request.Request(piped_url, headers={'User-Agent': MOBILE_USER_AGENTS[1]})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                if resp.getcode() == 200:
-                    res_data = json.loads(resp.read().decode('utf-8'))
-                    streams = res_data.get('videoStreams', [])
-                    for stream in streams:
-                        stream_url = stream.get('url')
-                        if stream_url:
-                            urllib.request.urlretrieve(stream_url, output_path)
-                            if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-                                return True
-        except Exception:
-            pass
-
-    return False
 
 def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     """
-    تحميل مقطع الفيديو من يوتيوب بآلية متعددة المحاولات لتجاوز حظر البوتات:
-    - yt-dlp مع تدوير عملاء iOS, Android, web_creator, mweb, tv_embedded
-    - الدعم التلقائي لملف cookies.txt
-    - المحاولة عبر خدمات Cobalt/Piped العامة في حال تم حجب yt-dlp بالكامل
+    تحميل مقطع يوتيوب بطبقات متعددة:
+    1. Invidious stream مباشر (الأسرع من data center IPs)
+    2. Piped stream مباشر
+    3. yt-dlp مع عملاء متعددة + cookies
     """
     os.makedirs(output_dir, exist_ok=True)
-    out_template = os.path.join(output_dir, f"{task_id}_raw.%(ext)s")
     final_mp4 = os.path.join(output_dir, f"{task_id}_raw.mp4")
-    
+    out_template = os.path.join(output_dir, f"{task_id}_raw.%(ext)s")
     cookie_path = find_cookie_file()
     video_id = extract_youtube_id(youtube_url)
-    
-    # 1. تجربة yt-dlp بصفوف عملاء متطورة وتدوير User-Agents لتجاوز حظر البوتات
+
+    # ================================================================
+    # الطبقة 1: Invidious (أفضل حل لـ data center IPs)
+    # ================================================================
+    logger.info(f"[Layer 1] Trying Invidious for {video_id}")
+    if video_id:
+        result = fetch_from_invidious(video_id)
+        if result and result.get('stream_url'):
+            logger.info(f"[Layer 1] Invidious stream URL found from {result['instance']}, downloading...")
+            if _safe_download_url(result['stream_url'], final_mp4, timeout=120):
+                logger.info(f"[Layer 1] SUCCESS via Invidious: {result['instance']}")
+                info_dict = {
+                    'id': video_id,
+                    'title': result['title'],
+                    'duration': result['duration'],
+                    'duration_string': f"{int(result['duration'] // 60)} دقيقة",
+                    'thumbnail': result['thumbnail']
+                }
+                return final_mp4, info_dict
+            else:
+                logger.warning("[Layer 1] Invidious stream download failed (file too small or error)")
+
+    # ================================================================
+    # الطبقة 2: Piped
+    # ================================================================
+    logger.info(f"[Layer 2] Trying Piped for {video_id}")
+    if video_id:
+        result = fetch_from_piped(video_id)
+        if result and result.get('stream_url'):
+            logger.info(f"[Layer 2] Piped stream URL found from {result['instance']}, downloading...")
+            if _safe_download_url(result['stream_url'], final_mp4, timeout=120):
+                logger.info(f"[Layer 2] SUCCESS via Piped: {result['instance']}")
+                info_dict = {
+                    'id': video_id,
+                    'title': result['title'],
+                    'duration': result['duration'],
+                    'duration_string': f"{int(result['duration'] // 60)} دقيقة",
+                    'thumbnail': result['thumbnail']
+                }
+                return final_mp4, info_dict
+            else:
+                logger.warning("[Layer 2] Piped stream download failed")
+
+    # ================================================================
+    # الطبقة 3: yt-dlp مع عملاء متعددة
+    # ================================================================
+    logger.info("[Layer 3] Trying yt-dlp with multiple clients")
     clients_to_try = [
         ['android', 'mweb'],
         ['android'],
+        ['ios'],
         ['mweb'],
         ['tv_embedded'],
-        ['ios'],
-        ['web_creator']
+        ['web_creator'],
     ]
-    
+
     last_exception = None
     for idx, client_list in enumerate(clients_to_try):
         try:
             ua = MOBILE_USER_AGENTS[idx % len(MOBILE_USER_AGENTS)]
             ydl_opts = {
-                'format': 'bestvideo+bestaudio/best',
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': out_template,
                 'merge_output_format': 'mp4',
                 'quiet': True,
                 'no_warnings': True,
                 'nocheckcertificate': True,
-                'socket_timeout': 25,
-                'retries': 5,
+                'socket_timeout': 30,
+                'retries': 3,
                 'noplaylist': True,
                 'extractor_args': {
                     'youtube': {
                         'player_client': client_list
                     }
                 },
-                'http_headers': {
-                    'User-Agent': ua,
-                }
+                'http_headers': {'User-Agent': ua}
             }
             if cookie_path:
                 ydl_opts['cookiefile'] = cookie_path
@@ -265,21 +364,104 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                 base, _ = os.path.splitext(downloaded_file)
                 mp4_file = base + ".mp4"
                 if os.path.exists(mp4_file):
+                    logger.info(f"[Layer 3] SUCCESS via yt-dlp client {client_list}")
                     return mp4_file, info
-                return downloaded_file, info
+                if os.path.exists(downloaded_file):
+                    return downloaded_file, info
         except Exception as e:
-            logger.warning(f"Download attempt with client {client_list} failed: {e}")
+            logger.warning(f"[Layer 3] yt-dlp client {client_list} failed: {e}")
             last_exception = e
 
-    # 2. الثانوية: استخدام خدمات التنزيل المباشرة Cobalt/Piped إذا تم إحداث حظر تام على yt-dlp
-    logger.info("Attempting secondary fallback via Cobalt / Piped APIs...")
-    if download_via_public_api(youtube_url, final_mp4):
-        info_dict = get_video_info(youtube_url)
-        return final_mp4, info_dict
+    # ================================================================
+    # الطبقة 4: Invidious embed download (حل أخير)
+    # ================================================================
+    logger.info("[Layer 4] Trying Invidious embed page download via yt-dlp")
+    if video_id:
+        for inv_base in INVIDIOUS_INSTANCES[:5]:
+            invidious_url = f"{inv_base}/watch?v={video_id}"
+            try:
+                ydl_opts = {
+                    'format': 'best[ext=mp4]/best',
+                    'outtmpl': out_template,
+                    'merge_output_format': 'mp4',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True,
+                    'socket_timeout': 30,
+                    'retries': 2,
+                    'noplaylist': True,
+                }
+                if cookie_path:
+                    ydl_opts['cookiefile'] = cookie_path
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(invidious_url, download=True)
+                    downloaded_file = ydl.prepare_filename(info)
+                    base, _ = os.path.splitext(downloaded_file)
+                    mp4_file = base + ".mp4"
+                    if os.path.exists(mp4_file):
+                        logger.info(f"[Layer 4] SUCCESS via Invidious embed {inv_base}")
+                        return mp4_file, info
+                    if os.path.exists(downloaded_file):
+                        return downloaded_file, info
+            except Exception as e:
+                logger.warning(f"[Layer 4] Invidious embed {inv_base} failed: {e}")
 
     if last_exception:
         raise last_exception
-    raise RuntimeError("تعذر تحميل المقطع بعد تجربة جميع طرق وسلاسل التنزيل البديلة.")
+    raise RuntimeError("تعذر تحميل المقطع بعد تجربة جميع طرق التنزيل البديلة.")
+
+
+def download_background_media(media_url: str, output_dir: str, task_id: str) -> str:
+    """
+    تحميل مقطع الخلفية (يوتيوب، انستقرام، تيك توك، بنترست...) بآلية ذكية متعددة الطبقات.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    out_template = os.path.join(output_dir, f"{task_id}_bg.%(ext)s")
+    final_mp4 = os.path.join(output_dir, f"{task_id}_bg.mp4")
+    cookie_path = find_cookie_file()
+
+    # للروابط من يوتيوب، نجرب Invidious/Piped أولاً
+    video_id = extract_youtube_id(media_url)
+    if video_id:
+        result = fetch_from_invidious(video_id)
+        if result and result.get('stream_url'):
+            if _safe_download_url(result['stream_url'], final_mp4, timeout=120):
+                return final_mp4
+        
+        result = fetch_from_piped(video_id)
+        if result and result.get('stream_url'):
+            if _safe_download_url(result['stream_url'], final_mp4, timeout=120):
+                return final_mp4
+
+    # yt-dlp لبقية المنصات
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': out_template,
+        'merge_output_format': 'mp4',
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+        'socket_timeout': 30,
+        'retries': 3,
+        'noplaylist': True,
+        'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
+    }
+    if cookie_path:
+        ydl_opts['cookiefile'] = cookie_path
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(media_url, download=True)
+            downloaded_file = ydl.prepare_filename(info)
+            base, _ = os.path.splitext(downloaded_file)
+            mp4_file = base + ".mp4"
+            if os.path.exists(mp4_file):
+                return mp4_file
+            return downloaded_file
+    except Exception as e:
+        logger.error(f"Background media download failed: {e}")
+        raise RuntimeError(f"تعذر تحميل مقطع الخلفية: {e}")
+
 
 def create_shorts_video(
     video_path: str,
@@ -300,9 +482,9 @@ def create_shorts_video(
         overlay_pos = "(W-w)/2:120"
     elif video_position == "bottom":
         overlay_pos = "(W-w)/2:H-h-120"
-        
+
     filter_complex = ""
-    
+
     if layout == "black_screen_transparent" or layout == "colorkey_transparent":
         tol_str = f"{key_tolerance:.2f}"
         filter_complex = (
@@ -334,14 +516,14 @@ def create_shorts_video(
             "[1:v]scale=1000:1000:force_original_aspect_ratio=decrease,pad=1000:1000:(ow-iw)/2:(oh-ih)/2:color=black@0[img];"
             "[bg][img]overlay=(W-w)/2:(H-h)/2[v]"
         )
-        
+
     cmd = ["ffmpeg", "-y"]
-    
+
     if start_time > 0:
         cmd.extend(["-ss", str(start_time)])
     if end_time and end_time > start_time:
         cmd.extend(["-to", str(end_time)])
-        
+
     cmd.extend([
         "-i", video_path,
         "-loop", "1", "-i", image_path,
@@ -357,15 +539,16 @@ def create_shorts_video(
         "-pix_fmt", "yuv420p",
         output_path
     ])
-    
-    logger.info(f"تشغيل أمر FFmpeg: {' '.join(cmd)}")
+
+    logger.info(f"Running FFmpeg: {' '.join(cmd)}")
     process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    
+
     if process.returncode != 0:
-        logger.error(f"خطأ في FFmpeg: {process.stderr}")
+        logger.error(f"FFmpeg error: {process.stderr}")
         raise RuntimeError(f"فشلت عملية الدمج في FFmpeg: {process.stderr[-500:]}")
-        
+
     return output_path
+
 
 def create_shorts_video_from_video(
     primary_video_path: str,
@@ -381,7 +564,8 @@ def create_shorts_video_from_video(
     دمج فيديو أساسي (شاشة سوداء) مع فيديو خلفية مع مزامنة السرعة.
     """
     def get_duration(path):
-        cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path]
+        cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+               "-of", "default=noprint_wrappers=1:nokey=1", path]
         try:
             return float(subprocess.check_output(cmd).decode("utf-8").strip())
         except:
@@ -389,22 +573,22 @@ def create_shorts_video_from_video(
 
     dur1 = get_duration(primary_video_path)
     dur2 = get_duration(bg_video_path)
-    
+
     if end_time and end_time > start_time:
         dur1 = min(dur1, end_time - start_time)
-        
+
     speed_factor = 1.0
     if dur2 < dur1 and dur2 > 0:
         speed_factor = dur1 / dur2
-    
+
     overlay_pos = "(W-w)/2:(H-h)/2"
     if video_position == "top":
         overlay_pos = "(W-w)/2:120"
     elif video_position == "bottom":
         overlay_pos = "(W-w)/2:H-h-120"
-        
+
     bg_filter = f"[1:v]setpts=PTS*{speed_factor},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg];"
-    
+
     if layout == "black_screen_transparent" or layout == "colorkey_transparent":
         tol_str = f"{key_tolerance:.2f}"
         filter_complex = (
@@ -424,14 +608,14 @@ def create_shorts_video_from_video(
             "[0:v]scale=1000:1000:force_original_aspect_ratio=decrease,pad=1000:1000:(ow-iw)/2:(oh-ih)/2:color=black@0[vid];"
             "[bg][vid]overlay=(W-w)/2:(H-h)/2[v]"
         )
-        
+
     cmd = ["ffmpeg", "-y"]
-    
+
     if start_time > 0:
         cmd.extend(["-ss", str(start_time)])
     if end_time and end_time > start_time:
         cmd.extend(["-to", str(end_time)])
-        
+
     cmd.extend([
         "-i", primary_video_path,
         "-i", bg_video_path,
@@ -447,12 +631,12 @@ def create_shorts_video_from_video(
         "-pix_fmt", "yuv420p",
         output_path
     ])
-    
-    logger.info(f"تشغيل أمر FFmpeg للفيديو: {' '.join(cmd)}")
+
+    logger.info(f"Running FFmpeg for video: {' '.join(cmd)}")
     process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    
+
     if process.returncode != 0:
-        logger.error(f"خطأ في FFmpeg: {process.stderr}")
+        logger.error(f"FFmpeg error: {process.stderr}")
         raise RuntimeError(f"فشلت عملية الدمج في FFmpeg: {process.stderr[-500:]}")
-        
+
     return output_path

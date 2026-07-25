@@ -8,7 +8,7 @@ from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPExcept
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
-from processor import get_video_info, download_youtube_media, create_shorts_video
+from processor import get_video_info, download_youtube_media, download_background_media, create_shorts_video
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMP_DIR = os.path.join(BASE_DIR, "temp")
@@ -21,45 +21,7 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 
 app = FastAPI(title="أجر اليوتيوب — صانع شورتس يوتيوب الدمجي", version="2.0")
 
-# --- TEST ROUTE FOR COBALT ---
-@app.get("/api/test-cobalt")
-async def test_cobalt_route():
-    import urllib.request
-    import json
-    try:
-        req = urllib.request.Request("https://instances.cobalt.wiki/instances.json", headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            
-        working_apis = [inst.get('api') for inst in data if inst.get('api') and inst.get('cors') == 1]
-        results = []
-        for api_base in working_apis[:10]:
-            try:
-                payload = json.dumps({"url": "https://youtu.be/X1ENbQarvM0"}).encode('utf-8')
-                req_dl = urllib.request.Request(
-                    api_base,
-                    data=payload,
-                    headers={
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                        "User-Agent": "Mozilla/5.0"
-                    }
-                )
-                with urllib.request.urlopen(req_dl, timeout=5) as resp_dl:
-                    if resp_dl.getcode() == 200:
-                        res = json.loads(resp_dl.read().decode('utf-8'))
-                        results.append(f"SUCCESS {api_base}: {res.get('url')[:50]}")
-                    else:
-                        results.append(f"FAIL {api_base}: Status {resp_dl.getcode()}")
-            except Exception as e:
-                err = str(e)
-                try: err += " " + e.read().decode()
-                except: pass
-                results.append(f"ERROR {api_base}: {err[:150]}")
-        return {"results": results}
-    except Exception as e:
-        return {"error": str(e)}
-# -----------------------------
+
 
 def find_static_file(name: str) -> Optional[str]:
     if not os.path.exists(STATIC_DIR):
@@ -297,7 +259,8 @@ def run_processing_job_video(
         
         # 1. تحميل المقاطع
         primary_video_path, _ = download_youtube_media(primary_url, TEMP_DIR, task_id + "_primary")
-        bg_video_path, _ = download_youtube_media(bg_url, TEMP_DIR, task_id + "_bg")
+        # استخدام download_background_media للخلفية لأنها تدعم يوتيوب وبنترست وتيك توك وانستقرام
+        bg_video_path = download_background_media(bg_url, TEMP_DIR, task_id + "_bg")
         
         tasks_db[task_id]["status"] = "processing"
         tasks_db[task_id]["message"] = "جاري دمج الفيديوهات والمزامنة وتفريغ الشاشة السوداء..."
