@@ -229,9 +229,7 @@ def download_background_media(media_url: str, output_dir: str, task_id: str) -> 
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'socket_timeout': 30,
-        'retries': 5,
-        'noplaylist': True,
+        'cookiefile': 'cookies.txt',  # استخدام ملف الكوكيز إن وجد
         'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
     }
     if cookie_path:
