@@ -205,8 +205,55 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
             last_exception = e
 
     if last_exception:
-        raise last_exception
-    raise RuntimeError("تعذر تحميل المقطع. يرجى التأكد من صحة الرابط.")
+        logger.warning(f"All yt-dlp clients failed: {last_exception}")
+
+    # 3. طبقة Cobalt API (الحل الذكي النهائي لتجاوز الحظر)
+    COBALT_INSTANCES = [
+        "https://co.wuk.sh",
+        "https://cobalt.q0.o.lolo.wtf",
+        "https://cobalt.cachyos.org",
+        "https://cobalt.starnix.network",
+        "https://cobalt.ducko.net",
+        "https://cobalt.zorner.me",
+        "https://api.cobalt.tools"
+    ]
+    
+    logger.info("Trying Cobalt API fallback...")
+    for base in COBALT_INSTANCES:
+        try:
+            req = urllib.request.Request(
+                f"{base}/api/json",
+                data=json.dumps({"url": youtube_url, "videoQuality": "1080"}).encode('utf-8'),
+                headers={
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'Mozilla/5.0'
+                }
+            )
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                res = json.loads(resp.read().decode('utf-8'))
+                if res.get('status') in ['stream', 'redirect']:
+                    video_url = res.get('url')
+                    if video_url:
+                        logger.info(f"Downloading from Cobalt instance {base}")
+                        req_dl = urllib.request.Request(video_url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req_dl, timeout=30, context=ctx) as r:
+                            with open(final_mp4, 'wb') as f:
+                                while True:
+                                    chunk = r.read(8192)
+                                    if not chunk: break
+                                    f.write(chunk)
+                        if os.path.getsize(final_mp4) > 100000:
+                            logger.info(f"SUCCESS download via Cobalt {base}")
+                            return final_mp4, get_video_info(youtube_url)
+        except Exception as e:
+            logger.warning(f"Cobalt instance {base} failed: {e}")
+
+    raise RuntimeError("تعذر تحميل المقطع بعد تجربة جميع الحلول والطبقات الذكية. يرجى التأكد من الرابط.")
 
 def download_background_media(media_url: str, output_dir: str, task_id: str) -> str:
     """
