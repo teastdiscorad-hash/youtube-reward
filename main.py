@@ -41,7 +41,7 @@ def find_static_file(name: str) -> Optional[str]:
 async def get_root_page():
     f = find_static_file("index.html")
     if f:
-        return FileResponse(f)
+        return FileResponse(f, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     raise HTTPException(status_code=404, detail="Index Page Not Found")
 
 @app.get("/image")
@@ -50,7 +50,7 @@ async def get_root_page():
 async def get_image_page():
     f = find_static_file("image.html")
     if f:
-        return FileResponse(f)
+        return FileResponse(f, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     raise HTTPException(status_code=404, detail="Image Page Not Found")
 
 @app.get("/video")
@@ -59,14 +59,17 @@ async def get_image_page():
 async def get_video_page():
     f = find_static_file("video.html")
     if f:
-        return FileResponse(f)
+        return FileResponse(f, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     raise HTTPException(status_code=404, detail="Video Page Not Found")
 
 @app.get("/{filename}")
 async def serve_static_file(filename: str):
     f = find_static_file(filename)
     if f:
-        return FileResponse(f)
+        headers = {}
+        if filename.endswith(".html"):
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return FileResponse(f, headers=headers)
     raise HTTPException(status_code=404, detail="Page Not Found")
 
 # دعم CORS للاتصال السلس من المتصفح
