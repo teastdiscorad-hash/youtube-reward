@@ -86,11 +86,11 @@
                         </div>
                     </div>
 
-                    <!-- 3. Layout Options Selector (Visual Cards Grid) -->
+                    <!-- 3. Layout Options Selector (Visual Cards Grid - Matching Video Page) -->
                     <div class="form-group" style="margin-top: 1.5rem;">
                         <label>
                             <i class="fa-solid fa-layer-group icon-purple"></i>
-                            طريقة دمج وتفريغ الشاشة السوداء فوق الصورة
+                            طريقة دمج الشاشة السوداء فوق الصورة
                         </label>
                         <div class="layouts-grid">
                             <label class="layout-card active">
@@ -99,7 +99,7 @@
                                     <div class="box-bg-img">الصورة الخلفية</div>
                                     <div class="box-overlay-txt">✨ تفريغ الأسود والنص ناصع 100%</div>
                                 </div>
-                                <span class="layout-name">تفريغ الأسود النقي (ألوان طبيعية 100%)</span>
+                                <span class="layout-name">تفريغ الأسود الشفاف (ألوان طبيعية)</span>
                             </label>
 
                             <label class="layout-card">
@@ -113,10 +113,10 @@
                         </div>
                     </div>
 
-                    <!-- Advanced Fine-Tuning Controls Accordion / Panel -->
+                    <!-- Advanced Fine-Tuning Controls Accordion / Panel (Collapsible Box - Matching Video Page) -->
                     <div class="advanced-settings-box">
                         <div class="settings-header" id="toggleSettings">
-                            <span><i class="fa-solid fa-sliders icon-gold"></i> إعدادات الضبط الدقيق والموقع (اختياري)</span>
+                            <span><i class="fa-solid fa-sliders icon-gold"></i> إعدادات الضبط الدقيق والسرعة (اختياري)</span>
                             <i class="fa-solid fa-chevron-down arrow-icon"></i>
                         </div>
                         <div class="settings-content hidden" id="settingsContent">
@@ -124,9 +124,9 @@
                             <div class="control-row" id="toleranceGroup">
                                 <div class="control-label">
                                     <span>درجة تفريغ الأسود:</span>
-                                    <strong id="valKeyTolerance" class="value-badge">25%</strong>
+                                    <strong id="toleranceVal" class="value-badge">0.25</strong>
                                 </div>
-                                <input type="range" id="inputKeyTolerance" min="0.10" max="0.45" step="0.01" value="0.25">
+                                <input type="range" id="keyTolerance" min="0.01" max="0.5" step="0.01" value="0.25">
                                 <div class="range-labels">
                                     <span>عالي الدقة</span>
                                     <span>إزالة واسعة</span>
@@ -156,11 +156,11 @@
                             <div class="control-row inline-controls">
                                 <div>
                                     <span class="control-label">وقت البداية (ثانية):</span>
-                                    <input type="number" id="inputStartTime" class="styled-input" placeholder="0" min="0" value="0">
+                                    <input type="number" id="startTime" class="styled-input" placeholder="0" min="0" value="0">
                                 </div>
                                 <div>
                                     <span class="control-label">وقت النهاية (ثانية):</span>
-                                    <input type="number" id="inputEndTime" class="styled-input" placeholder="تلقائي (كامل المقطع)">
+                                    <input type="number" id="endTime" class="styled-input" placeholder="تلقائي (كامل المقطع)">
                                 </div>
                             </div>
                         </div>
@@ -202,7 +202,7 @@
                         متصفحك لا يدعم مشغل الفيديو.
                     </video>
                 </div>
-                <a href="#" id="btnDownload" class="btn-primary btn-lg" target="_blank" download>
+                <a href="#" id="downloadBtn" class="btn-primary btn-lg" target="_blank" download>
                     <i class="fa-solid fa-download"></i> تنزيل الفيديو الآن (MP4)
                 </a>
             </div>
