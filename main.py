@@ -6,12 +6,24 @@ import asyncio
 import json
 import urllib.request
 import urllib.error
+import traceback
 from typing import Optional, Dict
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
-from processor import get_video_info, download_youtube_media, download_background_media, create_shorts_video
+import yt_dlp
+from pytubefix import YouTube
+
+from processor import (
+    get_video_info,
+    download_youtube_media,
+    download_background_media,
+    create_shorts_video,
+    fetch_via_yt1s,
+    fetch_via_y2mate,
+    PYTUBEFIX_AVAILABLE
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMP_DIR = os.path.join(BASE_DIR, "temp")
@@ -264,6 +276,44 @@ async def get_image_page():
     if f:
         return FileResponse(f, headers=NO_CACHE_HEADERS)
     raise HTTPException(status_code=404, detail="Image Page Not Found")
+
+@app.get("/debug")
+async def debug_downloaders():
+    results = {}
+    test_url = "https://youtu.be/X1ENbQarvM0?si=ywBx10hpLCHuUm9A"
+    test_pin = "https://pin.it/4xLWrFj5x"
+    
+    # 1. Test pytubefix
+    try:
+        if PYTUBEFIX_AVAILABLE:
+            yt = YouTube(test_url)
+            ys = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+            if ys:
+                results['pytubefix'] = f"Success! URL extracted: {ys.url[:50]}..."
+            else:
+                results['pytubefix'] = "Failed: No progressive mp4 stream found."
+        else:
+            results['pytubefix'] = "Not available."
+    except Exception as e:
+        results['pytubefix'] = f"Exception: {e}\n{traceback.format_exc()}"
+        
+    # 2. Test yt1s
+    try:
+        dlink = fetch_via_yt1s(test_url)
+        results['yt1s'] = f"Success! Dlink: {dlink}" if dlink else "Failed: returned None"
+    except Exception as e:
+        results['yt1s'] = f"Exception: {e}\n{traceback.format_exc()}"
+        
+    # 3. Test Pinterest via yt-dlp
+    try:
+        ydl_opts = {'quiet': True, 'nocheckcertificate': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(test_pin, download=False)
+            results['pinterest'] = f"Success! Extracted info: {info.get('title')}"
+    except Exception as e:
+        results['pinterest'] = f"Exception: {e}\n{traceback.format_exc()}"
+        
+    return results
 
 @app.get("/video")
 @app.get("/video/")
