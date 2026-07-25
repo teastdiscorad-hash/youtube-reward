@@ -3,10 +3,9 @@ import re
 import subprocess
 import logging
 import json
-import uuid
-import time
 import urllib.request
 import urllib.parse
+import urllib.error
 import yt_dlp
 
 logging.basicConfig(level=logging.INFO)
@@ -20,29 +19,27 @@ MOBILE_USER_AGENTS = [
 ]
 
 # -------------------------------------------------------------------
-# قائمة ثابتة من خوادم Invidious الموثوقة (تعمل server-to-server)
-# لا تعتمد على cobalt.wiki الذي يفشل من IPs خوادم السحابة
+# Invidious instances - the /latest_version endpoint proxies through
+# the Invidious server itself, bypassing YouTube CDN blocks on cloud IPs
+# itag=22 = 720p MP4, itag=18 = 360p MP4
 # -------------------------------------------------------------------
 INVIDIOUS_INSTANCES = [
     "https://inv.tux.pizza",
-    "https://invidious.nerdvpn.de",
-    "https://invidious.privacyredirect.com",
-    "https://invidious.perennialte.ch",
-    "https://iv.melmac.space",
+    "https://yewtu.be",
     "https://invidious.fdn.fr",
+    "https://invidious.projectsegfau.lt",
+    "https://iv.melmac.space",
     "https://invidious.drgns.space",
+    "https://invidious.private.coffee",
     "https://invidious.incogniweb.net",
-    "https://invidious.slipfox.xyz",
+    "https://invidious.perennialte.ch",
     "https://vid.puffyan.us",
     "https://invidious.io.lol",
-    "https://invidious.private.coffee",
-    "https://yewtu.be",
-    "https://invidious.projectsegfau.lt",
+    "https://invidious.slipfox.xyz",
+    "https://invidious.nerdvpn.de",
+    "https://invidious.privacyredirect.com",
 ]
 
-# -------------------------------------------------------------------
-# خوادم Piped كبديل ثانٍ
-# -------------------------------------------------------------------
 PIPED_INSTANCES = [
     "https://pipedapi.kavin.rocks",
     "https://pipedapi.adminforge.de",
@@ -51,13 +48,13 @@ PIPED_INSTANCES = [
     "https://pipedapi.syncpundit.io",
 ]
 
+ITAGS_PRIORITY = [22, 18, 137, 248, 136, 247, 135, 244, 134, 243, 133]
+
 
 def find_cookie_file() -> str:
-    """البحث عن ملف الكوكيز في المسارات المحتملة"""
     possible_paths = [
         os.path.join(os.path.dirname(__file__), "cookies.txt"),
         os.path.join(os.getcwd(), "cookies.txt"),
-        os.path.join(os.path.dirname(__file__), "..", "cookies.txt")
     ]
     for p in possible_paths:
         if os.path.isfile(p) and os.path.getsize(p) > 0:
@@ -70,139 +67,183 @@ def extract_youtube_id(url: str) -> str:
     return match.group(1) if match else None
 
 
-def _safe_download_url(url: str, output_path: str, timeout: int = 60) -> bool:
-    """تحميل ملف من رابط مباشر مع دعم ملفات الميديا الكبيرة"""
+def _http_get_json(url: str, timeout: int = 10) -> dict:
+    req = urllib.request.Request(url, headers={
+        'User-Agent': MOBILE_USER_AGENTS[0],
+        'Accept': 'application/json'
+    })
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode('utf-8'))
+
+
+def _download_chunked(url: str, output_path: str, timeout: int = 120, extra_headers: dict = None) -> bool:
+    """تحميل ملف بالـ chunks مع دعم الملفات الكبيرة"""
+    headers = {
+        'User-Agent': MOBILE_USER_AGENTS[0],
+        'Accept': '*/*',
+        'Accept-Encoding': 'identity',
+    }
+    if extra_headers:
+        headers.update(extra_headers)
+    req = urllib.request.Request(url, headers=headers)
     try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': MOBILE_USER_AGENTS[0],
-            'Referer': 'https://www.youtube.com/',
-            'Origin': 'https://www.youtube.com'
-        })
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            chunk_size = 1024 * 1024  # 1MB chunks
             with open(output_path, 'wb') as f:
                 while True:
-                    chunk = resp.read(chunk_size)
+                    chunk = resp.read(512 * 1024)
                     if not chunk:
                         break
                     f.write(chunk)
         size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
-        return size > 10000  # minimum 10KB
+        return size > 50000  # at least 50KB
     except Exception as e:
-        logger.warning(f"Direct download failed from {url[:60]}: {e}")
+        logger.warning(f"Chunked download failed from {url[:60]}: {e}")
+        if os.path.exists(output_path):
+            os.remove(output_path)
         return False
 
 
-def fetch_from_invidious(video_id: str) -> dict:
-    """جلب معلومات المقطع عبر Invidious"""
+# ====================================================================
+# LAYER 1: Invidious /latest_version PROXY endpoint
+# This proxies through the Invidious server itself → no YouTube CDN block
+# ====================================================================
+def download_via_invidious_proxy(video_id: str, output_path: str) -> bool:
+    """
+    استخدام نقطة النهاية /latest_version الخاصة بـ Invidious
+    هذه النقطة تُنزّل الفيديو عبر خادم Invidious نفسه كوسيط
+    مما يخفي IP السحابة عن يوتيوب تماماً
+    """
     for base in INVIDIOUS_INSTANCES:
-        try:
-            url = f"{base}/api/v1/videos/{video_id}"
-            req = urllib.request.Request(url, headers={
-                'User-Agent': MOBILE_USER_AGENTS[1],
-                'Accept': 'application/json'
-            })
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                if resp.getcode() == 200:
-                    data = json.loads(resp.read().decode('utf-8'))
-                    title = data.get('title', 'مقطع يوتيوب')
-                    dur = data.get('lengthSeconds', 90)
-                    thumb = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                    # استخراج رابط stream مباشر
-                    streams = []
-                    for fmt in data.get('adaptiveFormats', []):
-                        if fmt.get('type', '').startswith('video/mp4'):
-                            streams.append((fmt.get('bitrate', 0), fmt.get('url', '')))
-                    for fmt in data.get('formatStreams', []):
-                        if 'mp4' in fmt.get('type', ''):
-                            streams.append((999999, fmt.get('url', '')))
-                    
-                    stream_url = None
-                    if streams:
-                        streams.sort(key=lambda x: x[0], reverse=True)
-                        stream_url = streams[0][1]
-                    
-                    return {
-                        'title': title,
-                        'duration': dur,
-                        'thumbnail': thumb,
-                        'stream_url': stream_url,
-                        'instance': base
-                    }
-        except Exception as e:
-            logger.warning(f"Invidious {base} failed: {e}")
-    return None
+        for itag in ITAGS_PRIORITY[:5]:
+            proxy_url = f"{base}/latest_version?id={video_id}&itag={itag}&local=true"
+            logger.info(f"[Invidious Proxy] Trying {base} itag={itag}")
+            try:
+                if _download_chunked(proxy_url, output_path, timeout=180):
+                    logger.info(f"[Invidious Proxy] SUCCESS {base} itag={itag}")
+                    return True
+            except Exception as e:
+                logger.warning(f"[Invidious Proxy] {base} itag={itag} failed: {e}")
+    return False
 
 
-def fetch_from_piped(video_id: str) -> dict:
-    """جلب معلومات وروابط التدفق عبر Piped API"""
+# ====================================================================
+# LAYER 2: Piped proxyUrl (proxied through Piped server)
+# ====================================================================
+def download_via_piped_proxy(video_id: str, output_path: str) -> bool:
+    """
+    استخدام Piped API مع حقل proxyUrl الذي يوجّه التدفق عبر خادم Piped
+    """
     for base in PIPED_INSTANCES:
         try:
-            url = f"{base}/streams/{video_id}"
-            req = urllib.request.Request(url, headers={
-                'User-Agent': MOBILE_USER_AGENTS[0],
-                'Accept': 'application/json'
-            })
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                if resp.getcode() == 200:
-                    data = json.loads(resp.read().decode('utf-8'))
-                    title = data.get('title', 'مقطع يوتيوب')
-                    dur = data.get('duration', 90)
-                    thumb = data.get('thumbnailUrl') or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                    
-                    # أفضل رابط تدفق مباشر
-                    stream_url = None
-                    best_bitrate = 0
-                    for s in data.get('videoStreams', []):
-                        bitrate = s.get('bitrate', 0)
-                        fmt = s.get('format', '')
-                        if fmt in ('MP4', 'MPEG_4') and bitrate > best_bitrate:
-                            best_bitrate = bitrate
-                            stream_url = s.get('url')
-                    
-                    # fallback: first available stream
-                    if not stream_url and data.get('videoStreams'):
-                        stream_url = data['videoStreams'][0].get('url')
-                    
-                    return {
-                        'title': title,
-                        'duration': dur,
-                        'thumbnail': thumb,
-                        'stream_url': stream_url,
-                        'instance': base
-                    }
+            data = _http_get_json(f"{base}/streams/{video_id}", timeout=10)
+            streams = data.get('videoStreams', [])
+            
+            # ترتيب حسب الجودة، ونفضّل proxyUrl على url
+            best_url = None
+            best_quality = 0
+            for s in streams:
+                quality = s.get('quality', '') or ''
+                try:
+                    q_num = int(quality.replace('p', '').split(' ')[0])
+                except:
+                    q_num = 0
+                fmt = s.get('format', '')
+                # نفضل MP4
+                if fmt in ('MP4', 'MPEG_4') and q_num > best_quality:
+                    # نستخدم proxyUrl أولاً (يمر عبر سيرفر Piped)
+                    proxy_url = s.get('proxyUrl') or s.get('url')
+                    if proxy_url:
+                        best_quality = q_num
+                        best_url = proxy_url
+            
+            if not best_url and streams:
+                s = streams[0]
+                best_url = s.get('proxyUrl') or s.get('url')
+            
+            if best_url:
+                logger.info(f"[Piped Proxy] Trying {base}")
+                if _download_chunked(best_url, output_path, timeout=180):
+                    logger.info(f"[Piped Proxy] SUCCESS via {base}")
+                    return True
         except Exception as e:
-            logger.warning(f"Piped {base} failed: {e}")
+            logger.warning(f"[Piped Proxy] {base} failed: {e}")
+    return False
+
+
+# ====================================================================
+# LAYER 3: Invidious API with local=true (proxied stream URLs)
+# ====================================================================
+def download_via_invidious_api_local(video_id: str, output_path: str) -> bool:
+    """
+    استخدام Invidious API مع local=true لجلب روابط تدفق مُوكّلة
+    """
+    for base in INVIDIOUS_INSTANCES:
+        try:
+            data = _http_get_json(f"{base}/api/v1/videos/{video_id}?local=true", timeout=10)
+            
+            # نبحث في formatStreams أولاً (روابط مدمجة أسهل)
+            format_streams = data.get('formatStreams', [])
+            for fmt in sorted(format_streams, key=lambda x: x.get('bitrate', 0), reverse=True):
+                if 'mp4' in fmt.get('type', '').lower():
+                    stream_url = fmt.get('url')
+                    if stream_url:
+                        logger.info(f"[Invidious API local] Trying formatStream from {base}")
+                        if _download_chunked(stream_url, output_path, timeout=180):
+                            logger.info(f"[Invidious API local] SUCCESS via {base}")
+                            return True
+            
+            # ثم adaptiveFormats
+            adaptive = data.get('adaptiveFormats', [])
+            for fmt in sorted(adaptive, key=lambda x: x.get('bitrate', 0), reverse=True):
+                if 'video/mp4' in fmt.get('type', '').lower():
+                    stream_url = fmt.get('url')
+                    if stream_url:
+                        logger.info(f"[Invidious API local] Trying adaptive from {base}")
+                        if _download_chunked(stream_url, output_path, timeout=180):
+                            logger.info(f"[Invidious API local] SUCCESS adaptive via {base}")
+                            return True
+        except Exception as e:
+            logger.warning(f"[Invidious API local] {base} failed: {e}")
+    return False
+
+
+# ====================================================================
+# INFO functions
+# ====================================================================
+def fetch_youtube_info_from_invidious(video_id: str) -> dict:
+    for base in INVIDIOUS_INSTANCES:
+        try:
+            data = _http_get_json(f"{base}/api/v1/videos/{video_id}", timeout=8)
+            title = data.get('title', 'مقطع يوتيوب')
+            dur = data.get('lengthSeconds', 90)
+            thumb = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+            return {'title': title, 'duration': dur, 'thumbnail': thumb}
+        except Exception as e:
+            logger.warning(f"Invidious info {base}: {e}")
     return None
 
 
 def get_video_info(youtube_url: str):
-    """
-    جلب معلومات المقطع بطبقات متعددة مضمونة.
-    """
     video_id = extract_youtube_id(youtube_url)
 
-    # 1. YouTube oEmbed (سريع وموثوق للعنوان والصورة المصغرة)
+    # 1. YouTube oEmbed
     try:
         oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(youtube_url)}&format=json"
-        req = urllib.request.Request(oembed_url, headers={'User-Agent': MOBILE_USER_AGENTS[0]})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            if resp.getcode() == 200:
-                data = json.loads(resp.read().decode('utf-8'))
-                thumb = data.get('thumbnail_url') or (f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else "")
-                return {
-                    'id': video_id or "youtube_video",
-                    'title': data.get('title', 'مقطع يوتيوب'),
-                    'duration': 90,
-                    'duration_string': 'مقطع يوتيوب',
-                    'thumbnail': thumb
-                }
+        data = _http_get_json(oembed_url, timeout=5)
+        thumb = data.get('thumbnail_url') or (f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else "")
+        return {
+            'id': video_id or "youtube_video",
+            'title': data.get('title', 'مقطع يوتيوب'),
+            'duration': 90,
+            'duration_string': 'مقطع يوتيوب',
+            'thumbnail': thumb
+        }
     except Exception as e:
         logger.warning(f"oEmbed failed: {e}")
 
     # 2. Invidious
     if video_id:
-        result = fetch_from_invidious(video_id)
+        result = fetch_youtube_info_from_invidious(video_id)
         if result:
             dur = result['duration']
             dur_str = f"{int(dur // 60)} دقيقة و {int(dur % 60)} ثانية" if dur else "غير محدد"
@@ -214,28 +255,12 @@ def get_video_info(youtube_url: str):
                 'thumbnail': result['thumbnail']
             }
 
-    # 3. Piped
-    if video_id:
-        result = fetch_from_piped(video_id)
-        if result:
-            dur = result['duration']
-            dur_str = f"{int(dur // 60)} دقيقة و {int(dur % 60)} ثانية" if dur else "غير محدد"
-            return {
-                'id': video_id,
-                'title': result['title'],
-                'duration': dur,
-                'duration_string': dur_str,
-                'thumbnail': result['thumbnail']
-            }
-
-    # 4. yt-dlp (آخر محاولة)
+    # 3. yt-dlp (last resort for info only)
     cookie_path = find_cookie_file()
-    for client in ['ios', 'android', 'mweb', 'tv_embedded']:
+    for client in ['ios', 'android', 'tv_embedded']:
         try:
             ydl_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'socket_timeout': 8,
+                'quiet': True, 'no_warnings': True, 'socket_timeout': 8,
                 'extractor_args': {'youtube': {'player_client': [client]}},
                 'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
             }
@@ -244,35 +269,30 @@ def get_video_info(youtube_url: str):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
                 dur = info.get('duration') or 0
-                dur_str = f"{int(dur // 60)} دقيقة و {int(dur % 60)} ثانية" if dur else "غير محدد"
                 return {
                     'id': info.get('id') or video_id,
                     'title': info.get('title') or 'مقطع يوتيوب',
                     'duration': dur,
-                    'duration_string': dur_str,
+                    'duration_string': f"{int(dur // 60)} دقيقة و {int(dur % 60)} ثانية" if dur else "غير محدد",
                     'thumbnail': info.get('thumbnail') or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
                 }
         except Exception as err:
-            logger.warning(f"yt-dlp info failed ({client}): {err}")
+            logger.warning(f"yt-dlp info ({client}): {err}")
 
-    # 5. Fallback مطلق
-    thumb_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
+    # Fallback
     return {
         'id': video_id or "unknown",
         'title': "مقطع فيديو جاهز للدمج",
         'duration': 90,
         'duration_string': "مقطع فيديو",
-        'thumbnail': thumb_url
+        'thumbnail': f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
     }
 
 
+# ====================================================================
+# MAIN DOWNLOAD FUNCTION
+# ====================================================================
 def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
-    """
-    تحميل مقطع يوتيوب بطبقات متعددة:
-    1. Invidious stream مباشر (الأسرع من data center IPs)
-    2. Piped stream مباشر
-    3. yt-dlp مع عملاء متعددة + cookies
-    """
     os.makedirs(output_dir, exist_ok=True)
     final_mp4 = os.path.join(output_dir, f"{task_id}_raw.mp4")
     out_template = os.path.join(output_dir, f"{task_id}_raw.%(ext)s")
@@ -280,60 +300,55 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     video_id = extract_youtube_id(youtube_url)
 
     # ================================================================
-    # الطبقة 1: Invidious (أفضل حل لـ data center IPs)
+    # الطبقة 1: Invidious /latest_version Proxy (الأقوى - يمر عبر سيرفر Invidious)
     # ================================================================
-    logger.info(f"[Layer 1] Trying Invidious for {video_id}")
+    logger.info(f"[Layer 1] Invidious /latest_version proxy for {video_id}")
     if video_id:
-        result = fetch_from_invidious(video_id)
-        if result and result.get('stream_url'):
-            logger.info(f"[Layer 1] Invidious stream URL found from {result['instance']}, downloading...")
-            if _safe_download_url(result['stream_url'], final_mp4, timeout=120):
-                logger.info(f"[Layer 1] SUCCESS via Invidious: {result['instance']}")
-                info_dict = {
-                    'id': video_id,
-                    'title': result['title'],
-                    'duration': result['duration'],
-                    'duration_string': f"{int(result['duration'] // 60)} دقيقة",
-                    'thumbnail': result['thumbnail']
-                }
-                return final_mp4, info_dict
-            else:
-                logger.warning("[Layer 1] Invidious stream download failed (file too small or error)")
+        if download_via_invidious_proxy(video_id, final_mp4):
+            info_dict = fetch_youtube_info_from_invidious(video_id) or {}
+            return final_mp4, {
+                'id': video_id,
+                'title': info_dict.get('title', 'مقطع يوتيوب'),
+                'duration': info_dict.get('duration', 90),
+                'thumbnail': info_dict.get('thumbnail', f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
+            }
 
     # ================================================================
-    # الطبقة 2: Piped
+    # الطبقة 2: Piped proxyUrl (يمر عبر سيرفر Piped)
     # ================================================================
-    logger.info(f"[Layer 2] Trying Piped for {video_id}")
+    logger.info(f"[Layer 2] Piped proxy for {video_id}")
     if video_id:
-        result = fetch_from_piped(video_id)
-        if result and result.get('stream_url'):
-            logger.info(f"[Layer 2] Piped stream URL found from {result['instance']}, downloading...")
-            if _safe_download_url(result['stream_url'], final_mp4, timeout=120):
-                logger.info(f"[Layer 2] SUCCESS via Piped: {result['instance']}")
-                info_dict = {
-                    'id': video_id,
-                    'title': result['title'],
-                    'duration': result['duration'],
-                    'duration_string': f"{int(result['duration'] // 60)} دقيقة",
-                    'thumbnail': result['thumbnail']
-                }
-                return final_mp4, info_dict
-            else:
-                logger.warning("[Layer 2] Piped stream download failed")
+        if download_via_piped_proxy(video_id, final_mp4):
+            info_dict = fetch_youtube_info_from_invidious(video_id) or {}
+            return final_mp4, {
+                'id': video_id,
+                'title': info_dict.get('title', 'مقطع يوتيوب'),
+                'duration': info_dict.get('duration', 90),
+                'thumbnail': info_dict.get('thumbnail', f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
+            }
 
     # ================================================================
-    # الطبقة 3: yt-dlp مع عملاء متعددة
+    # الطبقة 3: Invidious API local=true
     # ================================================================
-    logger.info("[Layer 3] Trying yt-dlp with multiple clients")
+    logger.info(f"[Layer 3] Invidious API local=true for {video_id}")
+    if video_id:
+        if download_via_invidious_api_local(video_id, final_mp4):
+            info_dict = fetch_youtube_info_from_invidious(video_id) or {}
+            return final_mp4, {
+                'id': video_id,
+                'title': info_dict.get('title', 'مقطع يوتيوب'),
+                'duration': info_dict.get('duration', 90),
+                'thumbnail': info_dict.get('thumbnail', f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg")
+            }
+
+    # ================================================================
+    # الطبقة 4: yt-dlp مع عملاء متعددة + cookies
+    # ================================================================
+    logger.info("[Layer 4] yt-dlp multi-client fallback")
     clients_to_try = [
-        ['android', 'mweb'],
-        ['android'],
-        ['ios'],
-        ['mweb'],
-        ['tv_embedded'],
-        ['web_creator'],
+        ['android', 'mweb'], ['android'], ['ios'],
+        ['mweb'], ['tv_embedded'], ['web_creator'],
     ]
-
     last_exception = None
     for idx, client_list in enumerate(clients_to_try):
         try:
@@ -342,108 +357,60 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': out_template,
                 'merge_output_format': 'mp4',
-                'quiet': True,
-                'no_warnings': True,
+                'quiet': True, 'no_warnings': True,
                 'nocheckcertificate': True,
-                'socket_timeout': 30,
-                'retries': 3,
-                'noplaylist': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': client_list
-                    }
-                },
+                'socket_timeout': 30, 'retries': 3, 'noplaylist': True,
+                'extractor_args': {'youtube': {'player_client': client_list}},
                 'http_headers': {'User-Agent': ua}
             }
             if cookie_path:
                 ydl_opts['cookiefile'] = cookie_path
-
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=True)
                 downloaded_file = ydl.prepare_filename(info)
                 base, _ = os.path.splitext(downloaded_file)
                 mp4_file = base + ".mp4"
                 if os.path.exists(mp4_file):
-                    logger.info(f"[Layer 3] SUCCESS via yt-dlp client {client_list}")
+                    logger.info(f"[Layer 4] yt-dlp SUCCESS {client_list}")
                     return mp4_file, info
                 if os.path.exists(downloaded_file):
                     return downloaded_file, info
         except Exception as e:
-            logger.warning(f"[Layer 3] yt-dlp client {client_list} failed: {e}")
+            logger.warning(f"[Layer 4] yt-dlp {client_list}: {e}")
             last_exception = e
-
-    # ================================================================
-    # الطبقة 4: Invidious embed download (حل أخير)
-    # ================================================================
-    logger.info("[Layer 4] Trying Invidious embed page download via yt-dlp")
-    if video_id:
-        for inv_base in INVIDIOUS_INSTANCES[:5]:
-            invidious_url = f"{inv_base}/watch?v={video_id}"
-            try:
-                ydl_opts = {
-                    'format': 'best[ext=mp4]/best',
-                    'outtmpl': out_template,
-                    'merge_output_format': 'mp4',
-                    'quiet': True,
-                    'no_warnings': True,
-                    'nocheckcertificate': True,
-                    'socket_timeout': 30,
-                    'retries': 2,
-                    'noplaylist': True,
-                }
-                if cookie_path:
-                    ydl_opts['cookiefile'] = cookie_path
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(invidious_url, download=True)
-                    downloaded_file = ydl.prepare_filename(info)
-                    base, _ = os.path.splitext(downloaded_file)
-                    mp4_file = base + ".mp4"
-                    if os.path.exists(mp4_file):
-                        logger.info(f"[Layer 4] SUCCESS via Invidious embed {inv_base}")
-                        return mp4_file, info
-                    if os.path.exists(downloaded_file):
-                        return downloaded_file, info
-            except Exception as e:
-                logger.warning(f"[Layer 4] Invidious embed {inv_base} failed: {e}")
 
     if last_exception:
         raise last_exception
-    raise RuntimeError("تعذر تحميل المقطع بعد تجربة جميع طرق التنزيل البديلة.")
+    raise RuntimeError("تعذر تحميل المقطع. يُرجى التحقق من الرابط أو المحاولة لاحقاً.")
 
 
 def download_background_media(media_url: str, output_dir: str, task_id: str) -> str:
     """
-    تحميل مقطع الخلفية (يوتيوب، انستقرام، تيك توك، بنترست...) بآلية ذكية متعددة الطبقات.
+    تحميل مقطع الخلفية (يوتيوب، انستقرام، تيك توك، بنترست...)
     """
     os.makedirs(output_dir, exist_ok=True)
     out_template = os.path.join(output_dir, f"{task_id}_bg.%(ext)s")
     final_mp4 = os.path.join(output_dir, f"{task_id}_bg.mp4")
     cookie_path = find_cookie_file()
-
-    # للروابط من يوتيوب، نجرب Invidious/Piped أولاً
     video_id = extract_youtube_id(media_url)
-    if video_id:
-        result = fetch_from_invidious(video_id)
-        if result and result.get('stream_url'):
-            if _safe_download_url(result['stream_url'], final_mp4, timeout=120):
-                return final_mp4
-        
-        result = fetch_from_piped(video_id)
-        if result and result.get('stream_url'):
-            if _safe_download_url(result['stream_url'], final_mp4, timeout=120):
-                return final_mp4
 
-    # yt-dlp لبقية المنصات
+    # لروابط يوتيوب نستخدم Invidious proxy أولاً
+    if video_id:
+        if download_via_invidious_proxy(video_id, final_mp4):
+            return final_mp4
+        if download_via_piped_proxy(video_id, final_mp4):
+            return final_mp4
+        if download_via_invidious_api_local(video_id, final_mp4):
+            return final_mp4
+
+    # لبقية المنصات yt-dlp
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': out_template,
         'merge_output_format': 'mp4',
-        'quiet': True,
-        'no_warnings': True,
+        'quiet': True, 'no_warnings': True,
         'nocheckcertificate': True,
-        'socket_timeout': 30,
-        'retries': 3,
-        'noplaylist': True,
+        'socket_timeout': 30, 'retries': 3, 'noplaylist': True,
         'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
     }
     if cookie_path:
@@ -474,18 +441,13 @@ def create_shorts_video(
     end_time: float = None,
     progress_callback=None
 ):
-    """
-    دمج الفيديو والصورة وتحويل التنسيق إلى يوتيوب شورتس (1080x1920 - 9:16)
-    """
     overlay_pos = "(W-w)/2:(H-h)/2"
     if video_position == "top":
         overlay_pos = "(W-w)/2:120"
     elif video_position == "bottom":
         overlay_pos = "(W-w)/2:H-h-120"
 
-    filter_complex = ""
-
-    if layout == "black_screen_transparent" or layout == "colorkey_transparent":
+    if layout in ("black_screen_transparent", "colorkey_transparent"):
         tol_str = f"{key_tolerance:.2f}"
         filter_complex = (
             "[1:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg];"
@@ -510,7 +472,7 @@ def create_shorts_video(
             "[1:v]scale=1080:864:force_original_aspect_ratio=decrease,pad=1080:864:(ow-iw)/2:(oh-ih)/2:color=black[bottom];"
             "[top][bottom]vstack=inputs=2[v]"
         )
-    else:  # center_image_blur_bg
+    else:
         filter_complex = (
             "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=30[bg];"
             "[1:v]scale=1000:1000:force_original_aspect_ratio=decrease,pad=1000:1000:(ow-iw)/2:(oh-ih)/2:color=black@0[img];"
@@ -518,35 +480,24 @@ def create_shorts_video(
         )
 
     cmd = ["ffmpeg", "-y"]
-
     if start_time > 0:
         cmd.extend(["-ss", str(start_time)])
     if end_time and end_time > start_time:
         cmd.extend(["-to", str(end_time)])
 
     cmd.extend([
-        "-i", video_path,
-        "-loop", "1", "-i", image_path,
+        "-i", video_path, "-loop", "1", "-i", image_path,
         "-filter_complex", filter_complex,
-        "-map", "[v]",
-        "-map", "0:a?",
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "22",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-shortest",
-        "-pix_fmt", "yuv420p",
-        output_path
+        "-map", "[v]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+        "-c:a", "aac", "-b:a", "192k",
+        "-shortest", "-pix_fmt", "yuv420p", output_path
     ])
 
-    logger.info(f"Running FFmpeg: {' '.join(cmd)}")
+    logger.info(f"FFmpeg: {' '.join(cmd)}")
     process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
     if process.returncode != 0:
-        logger.error(f"FFmpeg error: {process.stderr}")
         raise RuntimeError(f"فشلت عملية الدمج في FFmpeg: {process.stderr[-500:]}")
-
     return output_path
 
 
@@ -560,9 +511,6 @@ def create_shorts_video_from_video(
     start_time: float = 0,
     end_time: float = None
 ):
-    """
-    دمج فيديو أساسي (شاشة سوداء) مع فيديو خلفية مع مزامنة السرعة.
-    """
     def get_duration(path):
         cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
                "-of", "default=noprint_wrappers=1:nokey=1", path]
@@ -573,10 +521,8 @@ def create_shorts_video_from_video(
 
     dur1 = get_duration(primary_video_path)
     dur2 = get_duration(bg_video_path)
-
     if end_time and end_time > start_time:
         dur1 = min(dur1, end_time - start_time)
-
     speed_factor = 1.0
     if dur2 < dur1 and dur2 > 0:
         speed_factor = dur1 / dur2
@@ -589,7 +535,7 @@ def create_shorts_video_from_video(
 
     bg_filter = f"[1:v]setpts=PTS*{speed_factor},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg];"
 
-    if layout == "black_screen_transparent" or layout == "colorkey_transparent":
+    if layout in ("black_screen_transparent", "colorkey_transparent"):
         tol_str = f"{key_tolerance:.2f}"
         filter_complex = (
             bg_filter +
@@ -610,33 +556,22 @@ def create_shorts_video_from_video(
         )
 
     cmd = ["ffmpeg", "-y"]
-
     if start_time > 0:
         cmd.extend(["-ss", str(start_time)])
     if end_time and end_time > start_time:
         cmd.extend(["-to", str(end_time)])
 
     cmd.extend([
-        "-i", primary_video_path,
-        "-i", bg_video_path,
+        "-i", primary_video_path, "-i", bg_video_path,
         "-filter_complex", filter_complex,
-        "-map", "[v]",
-        "-map", "0:a?",
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "22",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-shortest",
-        "-pix_fmt", "yuv420p",
-        output_path
+        "-map", "[v]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+        "-c:a", "aac", "-b:a", "192k",
+        "-shortest", "-pix_fmt", "yuv420p", output_path
     ])
 
-    logger.info(f"Running FFmpeg for video: {' '.join(cmd)}")
+    logger.info(f"FFmpeg video+video: {' '.join(cmd)}")
     process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
     if process.returncode != 0:
-        logger.error(f"FFmpeg error: {process.stderr}")
         raise RuntimeError(f"فشلت عملية الدمج في FFmpeg: {process.stderr[-500:]}")
-
     return output_path
