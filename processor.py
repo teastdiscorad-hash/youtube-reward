@@ -105,6 +105,10 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     # 1. طبقة Invidious Proxy (الأكثر أماناً لأنها تخفي سيرفر Render تماماً)
     INVIDIOUS_INSTANCES = [
         "https://invidious.nerdvpn.de",
+        "https://inv.nadeko.net",
+        "https://invidious.f5.si",
+        "https://yt.chocolatemoo53.com",
+        "https://invidious.tiekoetter.com",
         "https://vid.pugices.pt",
         "https://invidious.fdn.fr",
         "https://invidious.privacyredirect.com",
@@ -114,32 +118,45 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     
     if video_id:
         import ssl
+        import socket
+        
+        # قوة استخدام IPv4 فقط لمنع خطأ Network is unreachable على سيرفر Render (الذي لا يدعم IPv6)
+        old_getaddrinfo = socket.getaddrinfo
+        def new_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+            return old_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+        socket.getaddrinfo = new_getaddrinfo
+
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        for base in INVIDIOUS_INSTANCES:
-            for itag in [22, 18]:
-                proxy_url = f"{base}/latest_version?id={video_id}&itag={itag}&local=true"
-                logger.info(f"Trying Invidious proxy: {proxy_url}")
-                try:
-                    req = urllib.request.Request(proxy_url, headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-                    })
-                    with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
-                        if resp.getcode() == 200:
-                            logger.info(f"Downloading from {base}...")
-                            with open(final_mp4, 'wb') as f:
-                                while True:
-                                    chunk = resp.read(8192)
-                                    if not chunk:
-                                        break
-                                    f.write(chunk)
-                            # Ensure the file has some size
-                            if os.path.getsize(final_mp4) > 100000:
-                                logger.info(f"SUCCESS download via Invidious proxy {base}")
-                                return final_mp4, get_video_info(youtube_url)
-                except Exception as e:
-                    logger.warning(f"Failed Invidious proxy {base} itag={itag}: {e}")
+        
+        try:
+            for base in INVIDIOUS_INSTANCES:
+                for itag in [22, 18]:
+                    proxy_url = f"{base}/latest_version?id={video_id}&itag={itag}&local=true"
+                    logger.info(f"Trying Invidious proxy: {proxy_url}")
+                    try:
+                        req = urllib.request.Request(proxy_url, headers={
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                        })
+                        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                            if resp.getcode() == 200:
+                                logger.info(f"Downloading from {base}...")
+                                with open(final_mp4, 'wb') as f:
+                                    while True:
+                                        chunk = resp.read(8192)
+                                        if not chunk:
+                                            break
+                                        f.write(chunk)
+                                # Ensure the file has some size
+                                if os.path.getsize(final_mp4) > 100000:
+                                    logger.info(f"SUCCESS download via Invidious proxy {base}")
+                                    socket.getaddrinfo = old_getaddrinfo # Restore
+                                    return final_mp4, get_video_info(youtube_url)
+                    except Exception as e:
+                        logger.warning(f"Failed Invidious proxy {base} itag={itag}: {e}")
+        finally:
+            socket.getaddrinfo = old_getaddrinfo # Restore even if loop ends
 
     # 2. طبقة yt-dlp مع عملاء اللاعبين المضمونة
     bulletproof_clients = [
