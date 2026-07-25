@@ -204,14 +204,14 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     cookie_path = find_cookie_file()
     video_id = extract_youtube_id(youtube_url)
     
-    # 1. تجربة yt-dlp بصفوف عملاء متنوعة وتدوير User-Agents
+    # 1. تجربة yt-dlp بصفوف عملاء متطورة وتدوير User-Agents لتجاوز حظر البوتات
     clients_to_try = [
-        ['ios'],
+        ['android', 'mweb'],
         ['android'],
-        ['web_creator'],
         ['mweb'],
         ['tv_embedded'],
-        ['ios', 'android']
+        ['ios'],
+        ['web_creator']
     ]
     
     last_exception = None
@@ -219,11 +219,13 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
         try:
             ua = MOBILE_USER_AGENTS[idx % len(MOBILE_USER_AGENTS)]
             ydl_opts = {
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
+                'format': 'bestvideo+bestaudio/best',
                 'outtmpl': out_template,
                 'merge_output_format': 'mp4',
                 'quiet': True,
-                'socket_timeout': 20,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+                'socket_timeout': 25,
                 'retries': 5,
                 'noplaylist': True,
                 'extractor_args': {
@@ -250,7 +252,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
             logger.warning(f"Download attempt with client {client_list} failed: {e}")
             last_exception = e
 
-    # 2. الثانوية: استخدام خدمات التنزيل المباشرة Cobalt/Piped إذا تم إحلاق الحظر التام على yt-dlp
+    # 2. الثانوية: استخدام خدمات التنزيل المباشرة Cobalt/Piped إذا تم إحداث حظر تام على yt-dlp
     logger.info("Attempting secondary fallback via Cobalt / Piped APIs...")
     if video_id and download_via_public_api(video_id, final_mp4):
         info_dict = get_video_info(youtube_url)
