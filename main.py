@@ -171,6 +171,53 @@ async def test_layers_endpoint():
 
 
 
+@app.get("/api/test-invidious-proxy")
+async def test_invidious_proxy_endpoint():
+    """اختبار نقطة /latest_version proxy عبر 14 خادم Invidious"""
+    from processor import INVIDIOUS_INSTANCES, PIPED_INSTANCES
+    video_id = "X1ENbQarvM0"
+
+    def run_proxy_tests():
+        results = {}
+        for base in INVIDIOUS_INSTANCES:
+            for itag in [22, 18]:
+                proxy_url = f"{base}/latest_version?id={video_id}&itag={itag}&local=true"
+                try:
+                    req = urllib.request.Request(proxy_url, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Range': 'bytes=0-8191'
+                    })
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        code = resp.getcode()
+                        chunk = resp.read(8192)
+                        results[f"{base} itag={itag}"] = {
+                            "status": code, "bytes": len(chunk),
+                            "accessible": code in (200, 206) and len(chunk) > 0
+                        }
+                        if code in (200, 206) and len(chunk) > 0:
+                            return results
+                except Exception as e:
+                    results[f"{base} itag={itag}"] = {"status": None, "bytes": 0, "error": str(e)[:100]}
+
+        for base in PIPED_INSTANCES:
+            try:
+                req = urllib.request.Request(f"{base}/streams/{video_id}", headers={
+                    'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'
+                })
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = json.loads(resp.read().decode('utf-8'))
+                    streams = data.get('videoStreams', [])
+                    results[f"piped:{base}"] = {
+                        "status": resp.getcode(), "streams": len(streams),
+                        "proxy_url": (streams[0].get('proxyUrl') or '')[:80] if streams else None
+                    }
+            except Exception as e:
+                results[f"piped:{base}"] = {"error": str(e)[:100]}
+        return results
+
+    data = await asyncio.to_thread(run_proxy_tests)
+    return JSONResponse(content={"video_id": video_id, "results": data})
+
 
 def find_static_file(name: str) -> Optional[str]:
     if not os.path.exists(STATIC_DIR):
