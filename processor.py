@@ -143,6 +143,11 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
 
     # 2. طبقة yt-dlp مع عملاء اللاعبين المضمونة
     bulletproof_clients = [
+        ['android_vr'],
+        ['android_creator'],
+        ['tv_embedded'],
+        ['android']
+    ]
 
     last_exception = None
     for client_list in bulletproof_clients:
