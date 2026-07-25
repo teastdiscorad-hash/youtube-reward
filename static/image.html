@@ -86,66 +86,82 @@
                         </div>
                     </div>
 
-                    <div class="two-columns">
-                        <!-- 3. Layout Options Selector -->
-                        <div class="form-group">
-                            <label for="layoutSelect"><i class="fa-solid fa-layer-group icon-purple"></i> طريقة الدمج والتفريغ</label>
-                            <div class="custom-select-wrapper">
-                                <select id="layoutSelect" name="layout" class="styled-input">
-                                    <option value="black_screen_transparent" selected>تفريغ الأسود النقي (ألوان طبيعية 100%)</option>
-                                    <option value="screen_blend_mode">إضاءة النص الشفاف (Screen Blend)</option>
-                                    <option value="split_top_image">قسمين: صورة بالأعلى وفيديو بالأسفل</option>
-                                    <option value="center_image_blur_bg">صورة بمركز الشاشة + خلفية فيديو غباش</option>
-                                </select>
-                                <i class="fa-solid fa-chevron-down select-icon"></i>
-                            </div>
-                        </div>
+                    <!-- 3. Layout Options Selector (Visual Cards Grid) -->
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label>
+                            <i class="fa-solid fa-layer-group icon-purple"></i>
+                            طريقة دمج وتفريغ الشاشة السوداء فوق الصورة
+                        </label>
+                        <div class="layouts-grid">
+                            <label class="layout-card active">
+                                <input type="radio" name="layout" value="black_screen_transparent" checked>
+                                <div class="layout-preview layout-transparent-screen">
+                                    <div class="box-bg-img">الصورة الخلفية</div>
+                                    <div class="box-overlay-txt">✨ تفريغ الأسود والنص ناصع 100%</div>
+                                </div>
+                                <span class="layout-name">تفريغ الأسود النقي (ألوان طبيعية 100%)</span>
+                            </label>
 
-                        <!-- 4. Key Tolerance -->
-                        <div class="form-group" id="toleranceGroup">
-                            <label for="inputKeyTolerance">
-                                <i class="fa-solid fa-sliders icon-purple"></i> 
-                                درجة تفريغ الأسود 
-                                <span id="valKeyTolerance" class="value-badge">25%</span>
-                            </label>
-                            <input type="range" id="inputKeyTolerance" min="0.10" max="0.45" step="0.01" value="0.25">
-                            <div class="range-labels">
-                                <span>عالي الدقة</span>
-                                <span>إزالة واسعة</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Video Position Selection -->
-                    <div class="form-group" id="positionGroup">
-                        <label><i class="fa-solid fa-arrows-up-down icon-purple"></i> موقع النص/الفيديو فوق الصورة</label>
-                        <div class="position-selector">
-                            <label class="pos-option">
-                                <input type="radio" name="video_position" value="top">
-                                <div class="pos-btn"><i class="fa-solid fa-arrow-up"></i> أعلى</div>
-                            </label>
-                            <label class="pos-option active">
-                                <input type="radio" name="video_position" value="center" checked>
-                                <div class="pos-btn"><i class="fa-solid fa-arrows-to-dot"></i> منتصف</div>
-                            </label>
-                            <label class="pos-option">
-                                <input type="radio" name="video_position" value="bottom">
-                                <div class="pos-btn"><i class="fa-solid fa-arrow-down"></i> أسفل</div>
+                            <label class="layout-card">
+                                <input type="radio" name="layout" value="screen_blend_mode">
+                                <div class="layout-preview layout-colorkey">
+                                    <div class="box-bg-img">الصورة الخلفية</div>
+                                    <div class="box-overlay-txt">🔆 إضاءة الشاشة (Screen Mode)</div>
+                                </div>
+                                <span class="layout-name">إضاءة النص الشفاف (Screen Blend)</span>
                             </label>
                         </div>
                     </div>
 
-                    <!-- Time Range Controls -->
-                    <div class="form-group time-group">
-                        <label><i class="fa-solid fa-stopwatch icon-red"></i> تحديد جزء معين من الفيديو (اختياري)</label>
-                        <div class="time-inputs">
-                            <div class="time-field">
-                                <span>وقت البداية (ثانية)</span>
-                                <input type="number" id="inputStartTime" class="styled-input" placeholder="0" min="0" value="0">
+                    <!-- Advanced Fine-Tuning Controls Accordion / Panel -->
+                    <div class="advanced-settings-box">
+                        <div class="settings-header" id="toggleSettings">
+                            <span><i class="fa-solid fa-sliders icon-gold"></i> إعدادات الضبط الدقيق والموقع (اختياري)</span>
+                            <i class="fa-solid fa-chevron-down arrow-icon"></i>
+                        </div>
+                        <div class="settings-content hidden" id="settingsContent">
+                            <!-- Color Key Sensitivity Slider -->
+                            <div class="control-row" id="toleranceGroup">
+                                <div class="control-label">
+                                    <span>درجة تفريغ الأسود:</span>
+                                    <strong id="valKeyTolerance" class="value-badge">25%</strong>
+                                </div>
+                                <input type="range" id="inputKeyTolerance" min="0.10" max="0.45" step="0.01" value="0.25">
+                                <div class="range-labels">
+                                    <span>عالي الدقة</span>
+                                    <span>إزالة واسعة</span>
+                                </div>
                             </div>
-                            <div class="time-field">
-                                <span>وقت النهاية (ثانية)</span>
-                                <input type="number" id="inputEndTime" class="styled-input" placeholder="تلقائي (كامل المقطع)" min="0">
+
+                            <!-- Video Overlay Position -->
+                            <div class="control-row" id="positionGroup">
+                                <span class="control-label">موقع النص/الفيديو فوق الصورة:</span>
+                                <div class="position-selector">
+                                    <label class="pos-option">
+                                        <input type="radio" name="video_position" value="top">
+                                        <div class="pos-btn"><i class="fa-solid fa-arrow-up"></i> أعلى</div>
+                                    </label>
+                                    <label class="pos-option active">
+                                        <input type="radio" name="video_position" value="center" checked>
+                                        <div class="pos-btn"><i class="fa-solid fa-arrows-to-dot"></i> منتصف</div>
+                                    </label>
+                                    <label class="pos-option">
+                                        <input type="radio" name="video_position" value="bottom">
+                                        <div class="pos-btn"><i class="fa-solid fa-arrow-down"></i> أسفل</div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Trimming Inputs -->
+                            <div class="control-row inline-controls">
+                                <div>
+                                    <span class="control-label">وقت البداية (ثانية):</span>
+                                    <input type="number" id="inputStartTime" class="styled-input" placeholder="0" min="0" value="0">
+                                </div>
+                                <div>
+                                    <span class="control-label">وقت النهاية (ثانية):</span>
+                                    <input type="number" id="inputEndTime" class="styled-input" placeholder="تلقائي (كامل المقطع)">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -179,14 +195,14 @@
             <!-- Success Download state -->
             <div id="resultBox" class="card result-card hidden">
                 <div class="success-icon"><i class="fa-solid fa-circle-check"></i></div>
-                <h2>تم الانتهاء بنجاح!</h2>
+                <h2>فيديو الشورتس جاهز للتنزيل!</h2>
                 <p>مقطع الشورتس الشفاف الخاص بك جاهز للتنزيل والنشر مباشرة.</p>
                 <div class="shorts-player-container" style="margin-bottom: 1.5rem;">
                     <video id="outputVideoPlayer" controls width="320" height="568">
                         متصفحك لا يدعم مشغل الفيديو.
                     </video>
                 </div>
-                <a href="#" id="downloadBtn" class="btn-primary btn-lg" target="_blank" download>
+                <a href="#" id="btnDownload" class="btn-primary btn-lg" target="_blank" download>
                     <i class="fa-solid fa-download"></i> تنزيل الفيديو الآن (MP4)
                 </a>
             </div>
