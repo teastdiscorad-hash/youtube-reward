@@ -136,57 +136,76 @@ def get_video_info(youtube_url: str):
     thumb_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
     return {
         'id': video_id or "unknown",
-        'title': "مقطع يوتيوب جاهز للدمج",
+        'title': "مقطع فيديو جاهز للدمج",
         'duration': 90,
-        'duration_string': "مقطع يوتيوب",
+        'duration_string': "مقطع فيديو",
         'thumbnail': thumb_url
     }
 
-def download_via_public_api(video_id: str, output_path: str) -> bool:
-    """محاولة تحميل المقطع مباشرة عبر خدمات Cobalt / Piped العامة كبديل لـ yt-dlp"""
-    if not video_id:
+def download_via_public_api(media_url: str, output_path: str) -> bool:
+    """محاولة تحميل المقطع مباشرة عبر شبكة خوادم Cobalt كبديل ذكي لـ yt-dlp"""
+    if not media_url:
         return False
         
-    # 1. تجربة Cobalt API
     try:
-        cobalt_url = "https://api.cobalt.tools/"
-        payload = json.dumps({"url": f"https://www.youtube.com/watch?v={video_id}"}).encode('utf-8')
-        req = urllib.request.Request(
-            cobalt_url,
-            data=payload,
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-                "User-Agent": MOBILE_USER_AGENTS[0]
-            }
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.getcode() == 200:
-                res_data = json.loads(resp.read().decode('utf-8'))
-                media_url = res_data.get('url')
-                if media_url:
-                    urllib.request.urlretrieve(media_url, output_path)
-                    if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-                        return True
+        req = urllib.request.Request("https://instances.cobalt.wiki/instances.json", headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            
+        # فلترة السيرفرات الموثوقة والتي تدعم الواجهة البرمجية (API)
+        working_apis = []
+        for inst in data:
+            api_url = inst.get('api')
+            # Trust levels: trusted or some other good status, and cors is enabled
+            if api_url and inst.get('cors') == 1:
+                working_apis.append(api_url)
+                
+        # محاولة التحميل من أول 5 سيرفرات تعمل كطبقات حماية
+        for api_base in working_apis[:8]:
+            try:
+                payload = json.dumps({"url": media_url}).encode('utf-8')
+                req_dl = urllib.request.Request(
+                    api_base,
+                    data=payload,
+                    headers={
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "User-Agent": MOBILE_USER_AGENTS[0]
+                    }
+                )
+                with urllib.request.urlopen(req_dl, timeout=8) as resp_dl:
+                    if resp_dl.getcode() == 200:
+                        res_data = json.loads(resp_dl.read().decode('utf-8'))
+                        dl_url = res_data.get('url')
+                        if dl_url:
+                            urllib.request.urlretrieve(dl_url, output_path)
+                            if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+                                logger.info(f"نجح التحميل عبر السيرفر الذكي: {api_base}")
+                                return True
+            except Exception as loop_e:
+                continue
+                
     except Exception as e:
-        logger.warning(f"Cobalt API download failed: {e}")
+        logger.warning(f"Failed to fetch Cobalt instances: {e}")
 
-    # 2. تجربة Piped API كبديل آخر
-    try:
-        piped_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
-        req = urllib.request.Request(piped_url, headers={'User-Agent': MOBILE_USER_AGENTS[1]})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.getcode() == 200:
-                res_data = json.loads(resp.read().decode('utf-8'))
-                streams = res_data.get('videoStreams', [])
-                for stream in streams:
-                    stream_url = stream.get('url')
-                    if stream_url:
-                        urllib.request.urlretrieve(stream_url, output_path)
-                        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-                            return True
-    except Exception as e:
-        logger.warning(f"Piped stream API download failed: {e}")
+    # Fallback to Piped if YouTube
+    video_id = extract_youtube_id(media_url)
+    if video_id:
+        try:
+            piped_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
+            req = urllib.request.Request(piped_url, headers={'User-Agent': MOBILE_USER_AGENTS[1]})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.getcode() == 200:
+                    res_data = json.loads(resp.read().decode('utf-8'))
+                    streams = res_data.get('videoStreams', [])
+                    for stream in streams:
+                        stream_url = stream.get('url')
+                        if stream_url:
+                            urllib.request.urlretrieve(stream_url, output_path)
+                            if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+                                return True
+        except Exception:
+            pass
 
     return False
 
@@ -254,7 +273,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
 
     # 2. الثانوية: استخدام خدمات التنزيل المباشرة Cobalt/Piped إذا تم إحداث حظر تام على yt-dlp
     logger.info("Attempting secondary fallback via Cobalt / Piped APIs...")
-    if video_id and download_via_public_api(video_id, final_mp4):
+    if download_via_public_api(youtube_url, final_mp4):
         info_dict = get_video_info(youtube_url)
         return final_mp4, info_dict
 
