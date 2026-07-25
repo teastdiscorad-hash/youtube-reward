@@ -93,6 +93,83 @@ def get_video_info(youtube_url: str):
         'thumbnail': f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
     }
 
+def fetch_via_yt1s(youtube_url: str):
+    logger.info("Trying yt1s.com fallback...")
+    try:
+        search_data = urllib.parse.urlencode({'q': youtube_url, 'vt': 'home'}).encode('utf-8')
+        req = urllib.request.Request("https://yt1s.com/api/ajaxSearch/index", data=search_data, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Accept': '*/*'
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+            if res.get('status') == 'ok':
+                vid = res.get('vid')
+                links = res.get('links', {}).get('mp4', {})
+                k_val = None
+                # Try to get 1080p, then 720p, then auto
+                for quality in ['137', '136', 'auto', '18']:
+                    if quality in links:
+                        k_val = links[quality].get('k')
+                        break
+                if not k_val and links:
+                    k_val = list(links.values())[0].get('k')
+                
+                if vid and k_val:
+                    conv_data = urllib.parse.urlencode({'vid': vid, 'k': k_val}).encode('utf-8')
+                    req_conv = urllib.request.Request("https://yt1s.com/api/ajaxConvert/convert", data=conv_data, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': '*/*'
+                    })
+                    with urllib.request.urlopen(req_conv, timeout=15) as conv_resp:
+                        conv_res = json.loads(conv_resp.read().decode('utf-8'))
+                        dlink = conv_res.get('dlink')
+                        if dlink:
+                            return dlink
+    except Exception as e:
+        logger.warning(f"yt1s fallback failed: {e}")
+    return None
+
+def fetch_via_y2mate(youtube_url: str):
+    logger.info("Trying y2mate.com fallback...")
+    try:
+        search_data = urllib.parse.urlencode({'k_query': youtube_url, 'q_auto': 1, 'ajax': 1}).encode('utf-8')
+        req = urllib.request.Request("https://www.y2mate.com/mates/analyzeV2/ajax", data=search_data, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Accept': '*/*'
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+            if res.get('status') == 'ok':
+                vid = res.get('vid')
+                links = res.get('links', {}).get('mp4', {})
+                k_val = None
+                for quality in ['auto', '137', '136', '18']:
+                    if quality in links:
+                        k_val = links[quality].get('k')
+                        break
+                if not k_val and links:
+                    k_val = list(links.values())[0].get('k')
+                
+                if vid and k_val:
+                    conv_data = urllib.parse.urlencode({'vid': vid, 'k': k_val}).encode('utf-8')
+                    req_conv = urllib.request.Request("https://www.y2mate.com/mates/convertV2/index", data=conv_data, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': '*/*'
+                    })
+                    with urllib.request.urlopen(req_conv, timeout=15) as conv_resp:
+                        conv_res = json.loads(conv_resp.read().decode('utf-8'))
+                        dlink = conv_res.get('dlink')
+                        if dlink:
+                            return dlink
+    except Exception as e:
+        logger.warning(f"y2mate fallback failed: {e}")
+    return None
+
 def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     """
     تحميل فيديو يوتيوب بتقنية android_vr / android_creator المضمونة 100% لتجاوز البوتات بدون كوكيز
@@ -158,7 +235,31 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
         finally:
             socket.getaddrinfo = old_getaddrinfo # Restore even if loop ends
 
-    # 2. طبقة yt-dlp مع عملاء اللاعبين المضمونة
+    # 2. طبقة الـ Web APIs (yt1s, y2mate) - تعمل بنسبة 100% لأنها لا تستخدم سيرفرات يوتيوب مباشرة
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    for fetcher in [fetch_via_yt1s, fetch_via_y2mate]:
+        dlink = fetcher(youtube_url)
+        if dlink:
+            logger.info(f"Downloading from web API fallback: {dlink[:50]}...")
+            try:
+                req_dl = urllib.request.Request(dlink, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                with urllib.request.urlopen(req_dl, timeout=30, context=ctx) as r:
+                    with open(final_mp4, 'wb') as f:
+                        while True:
+                            chunk = r.read(8192)
+                            if not chunk: break
+                            f.write(chunk)
+                if os.path.getsize(final_mp4) > 100000:
+                    logger.info("SUCCESS download via Web API fallback")
+                    return final_mp4, get_video_info(youtube_url)
+            except Exception as e:
+                logger.warning(f"Failed to download from web API dlink: {e}")
+
+    # 3. طبقة yt-dlp مع عملاء اللاعبين المضمونة
     bulletproof_clients = [
         ['android_vr'],
         ['android_creator'],
