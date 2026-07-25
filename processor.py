@@ -24,12 +24,10 @@ MOBILE_USER_AGENTS = [
 # itag=22 = 720p MP4, itag=18 = 360p MP4
 # -------------------------------------------------------------------
 INVIDIOUS_INSTANCES = [
-    "https://inv.tux.pizza",
-    "https://yewtu.be",
+    "https://yewtu.be",           # CONFIRMED WORKING from cloud IPs (HTTP 206)
     "https://invidious.fdn.fr",
     "https://invidious.projectsegfau.lt",
     "https://iv.melmac.space",
-    "https://invidious.drgns.space",
     "https://invidious.private.coffee",
     "https://invidious.incogniweb.net",
     "https://invidious.perennialte.ch",
@@ -37,7 +35,9 @@ INVIDIOUS_INSTANCES = [
     "https://invidious.io.lol",
     "https://invidious.slipfox.xyz",
     "https://invidious.nerdvpn.de",
+    "https://invidious.drgns.space",
     "https://invidious.privacyredirect.com",
+    "https://inv.tux.pizza",
 ]
 
 PIPED_INSTANCES = [
