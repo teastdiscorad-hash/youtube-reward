@@ -3,6 +3,9 @@ import time
 import uuid
 import shutil
 import asyncio
+import json
+import urllib.request
+import urllib.error
 from typing import Optional, Dict
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +23,152 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 
 app = FastAPI(title="أجر اليوتيوب — صانع شورتس يوتيوب الدمجي", version="2.0")
+
+
+def _fetch_url_status_and_json(url: str, timeout: int = 10):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+    }
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = resp.getcode()
+            content = resp.read()
+            data = None
+            try:
+                data = json.loads(content.decode('utf-8'))
+            except Exception:
+                pass
+            return {"status_code": status, "data": data, "error": None}
+    except urllib.error.HTTPError as e:
+        return {"status_code": e.code, "data": None, "error": str(e)}
+    except urllib.error.URLError as e:
+        return {"status_code": None, "data": None, "error": str(e.reason)}
+    except Exception as e:
+        return {"status_code": None, "data": None, "error": str(e)}
+
+
+def _test_stream_url(stream_url: str, timeout: int = 10):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Range': 'bytes=0-1023'
+    }
+    req = urllib.request.Request(stream_url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = resp.getcode()
+            chunk = resp.read(1024)
+            bytes_count = len(chunk)
+            accessible = (status in [200, 206]) and (bytes_count > 0)
+            return {
+                "status_code": status,
+                "bytes_downloaded": bytes_count,
+                "accessible": accessible,
+                "error": None
+            }
+    except urllib.error.HTTPError as e:
+        return {
+            "status_code": e.code,
+            "bytes_downloaded": 0,
+            "accessible": False,
+            "error": str(e)
+        }
+    except urllib.error.URLError as e:
+        return {
+            "status_code": None,
+            "bytes_downloaded": 0,
+            "accessible": False,
+            "error": str(e.reason)
+        }
+    except Exception as e:
+        return {
+            "status_code": None,
+            "bytes_downloaded": 0,
+            "accessible": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/test-layers")
+async def test_layers_endpoint():
+    video_id = "X1ENbQarvM0"
+    invidious_targets = [
+        f"https://inv.tux.pizza/api/v1/videos/{video_id}",
+        f"https://invidious.privacyredirect.com/api/v1/videos/{video_id}"
+    ]
+    piped_targets = [
+        f"https://pipedapi.kavin.rocks/streams/{video_id}"
+    ]
+
+    def run_tests():
+        results = {
+            "video_id": video_id,
+            "invidious": {},
+            "piped": {},
+            "invidious_stream_test": {}
+        }
+        invidious_jsons = []
+
+        # 1. Test Invidious instances
+        for target in invidious_targets:
+            res = _fetch_url_status_and_json(target)
+            results["invidious"][target] = {
+                "status_code": res["status_code"],
+                "error": res["error"]
+            }
+            if res["status_code"] == 200 and res["data"]:
+                invidious_jsons.append((target, res["data"]))
+
+        # 2. Test Piped instances
+        for target in piped_targets:
+            res = _fetch_url_status_and_json(target)
+            results["piped"][target] = {
+                "status_code": res["status_code"],
+                "error": res["error"]
+            }
+
+        # 3. Test Invidious stream URL (first adaptiveFormats URL)
+        stream_url = None
+        source_instance = None
+        for source_url, data in invidious_jsons:
+            adaptive_formats = data.get("adaptiveFormats", [])
+            if isinstance(adaptive_formats, list):
+                for fmt in adaptive_formats:
+                    if isinstance(fmt, dict) and fmt.get("url"):
+                        stream_url = fmt.get("url")
+                        source_instance = source_url
+                        break
+            if stream_url:
+                break
+
+        if stream_url:
+            stream_res = _test_stream_url(stream_url)
+            results["invidious_stream_test"] = {
+                "stream_url_found": True,
+                "source_instance": source_instance,
+                "stream_url": stream_url[:150] + "..." if len(stream_url) > 150 else stream_url,
+                "status_code": stream_res["status_code"],
+                "bytes_downloaded": stream_res["bytes_downloaded"],
+                "accessible": stream_res["accessible"],
+                "error": stream_res["error"]
+            }
+        else:
+            results["invidious_stream_test"] = {
+                "stream_url_found": False,
+                "source_instance": None,
+                "stream_url": None,
+                "status_code": None,
+                "bytes_downloaded": 0,
+                "accessible": False,
+                "error": "No adaptiveFormats URL found from Invidious responses"
+            }
+
+        return results
+
+    res_data = await asyncio.to_thread(run_tests)
+    return JSONResponse(content=res_data)
+
 
 
 
