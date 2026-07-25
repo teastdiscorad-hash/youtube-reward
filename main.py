@@ -174,7 +174,15 @@ async def test_layers_endpoint():
 @app.get("/api/test-invidious-proxy")
 async def test_invidious_proxy_endpoint():
     """اختبار نقطة /latest_version proxy عبر 14 خادم Invidious"""
-    from processor import INVIDIOUS_INSTANCES, PIPED_INSTANCES
+    INVIDIOUS_INSTANCES = [
+        "https://invidious.privacyredirect.com",
+        "https://inv.tux.pizza",
+        "https://invidious.jing.rocks",
+        "https://invidious.nerdvpn.de",
+        "https://vid.pugices.pt",
+        "https://invidious.fdn.fr"
+    ]
+    PIPED_INSTANCES = ["https://pipedapi.kavin.rocks"]
     video_id = "X1ENbQarvM0"
 
     def run_proxy_tests():

@@ -102,13 +102,47 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     out_template = os.path.join(output_dir, f"{task_id}_raw.%(ext)s")
     cookie_path = find_cookie_file()
 
-    # عملاء اللاعبين المضمونة التي تجتاز حظر البوتات بدون تسجيل دخول
-    bulletproof_clients = [
-        ['android_vr'],
-        ['android_creator'],
-        ['tv_embedded'],
-        ['android']
+    # 1. طبقة Invidious Proxy (الأكثر أماناً لأنها تخفي سيرفر Render تماماً)
+    INVIDIOUS_INSTANCES = [
+        "https://invidious.nerdvpn.de",
+        "https://vid.pugices.pt",
+        "https://invidious.fdn.fr",
+        "https://invidious.privacyredirect.com",
+        "https://inv.tux.pizza"
     ]
+    video_id = extract_youtube_id(youtube_url)
+    
+    if video_id:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        for base in INVIDIOUS_INSTANCES:
+            for itag in [22, 18]:
+                proxy_url = f"{base}/latest_version?id={video_id}&itag={itag}&local=true"
+                logger.info(f"Trying Invidious proxy: {proxy_url}")
+                try:
+                    req = urllib.request.Request(proxy_url, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                    })
+                    with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                        if resp.getcode() == 200:
+                            logger.info(f"Downloading from {base}...")
+                            with open(final_mp4, 'wb') as f:
+                                while True:
+                                    chunk = resp.read(8192)
+                                    if not chunk:
+                                        break
+                                    f.write(chunk)
+                            # Ensure the file has some size
+                            if os.path.getsize(final_mp4) > 100000:
+                                logger.info(f"SUCCESS download via Invidious proxy {base}")
+                                return final_mp4, get_video_info(youtube_url)
+                except Exception as e:
+                    logger.warning(f"Failed Invidious proxy {base} itag={itag}: {e}")
+
+    # 2. طبقة yt-dlp مع عملاء اللاعبين المضمونة
+    bulletproof_clients = [
 
     last_exception = None
     for client_list in bulletproof_clients:
