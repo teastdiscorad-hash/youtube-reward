@@ -100,50 +100,66 @@ def get_video_info(youtube_url: str):
         'thumbnail': f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
     }
 
-def fetch_via_yt1s(youtube_url: str):
-    logger.info("Trying yt1s.com fallback...")
-    try:
-        search_data = urllib.parse.urlencode({'q': youtube_url, 'vt': 'home'}).encode('utf-8')
-        req = urllib.request.Request("https://yt1s.com/api/ajaxSearch/index", data=search_data, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Accept': '*/*',
-            'Origin': 'https://yt1s.com',
-            'Referer': 'https://yt1s.com/en361',
-            'Accept-Language': 'en-US,en;q=0.9'
-        })
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            res = json.loads(resp.read().decode('utf-8'))
-            if res.get('status') == 'ok':
-                vid = res.get('vid')
-                links = res.get('links', {}).get('mp4', {})
-                k_val = None
-                # Try to get 1080p, then 720p, then auto
-                for quality in ['137', '136', 'auto', '18']:
-                    if quality in links:
-                        k_val = links[quality].get('k')
-                        break
-                if not k_val and links:
-                    k_val = list(links.values())[0].get('k')
-                
-                if vid and k_val:
-                    conv_data = urllib.parse.urlencode({'vid': vid, 'k': k_val}).encode('utf-8')
-                    req_conv = urllib.request.Request("https://yt1s.com/api/ajaxConvert/convert", data=conv_data, headers={
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'Accept': '*/*',
-                        'Origin': 'https://yt1s.com',
-                        'Referer': 'https://yt1s.com/en361',
-                        'Accept-Language': 'en-US,en;q=0.9'
-                    })
-                    with urllib.request.urlopen(req_conv, timeout=15) as conv_resp:
-                        conv_res = json.loads(conv_resp.read().decode('utf-8'))
-                        dlink = conv_res.get('dlink')
-                        if dlink:
-                            return dlink
-    except Exception as e:
-        logger.warning(f"yt1s fallback failed: {e}")
+def fetch_via_piped(youtube_url: str):
+    logger.info("Trying Piped API fallback...")
+    video_id = extract_youtube_id(youtube_url)
+    PIPED_INSTANCES = [
+        "https://pipedapi.kavin.rocks",
+        "https://pipedapi.tokhmi.xyz",
+        "https://pipedapi.adminforge.de",
+        "https://api.piped.privacydev.net"
+    ]
+    for base in PIPED_INSTANCES:
+        try:
+            url = f"{base}/streams/{video_id}"
+            req = urllib.request.Request(url, headers={'User-Agent': MOBILE_USER_AGENTS[0]})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                streams = data.get('videoStreams', [])
+                best_stream = None
+                for stream in streams:
+                    if not stream.get('videoOnly', True):
+                        best_stream = stream
+                        if stream.get('quality') in ['1080p', '720p', '480p']:
+                            break
+                if best_stream and best_stream.get('url'):
+                    return best_stream.get('url')
+        except Exception as e:
+            logger.warning(f"Piped API {base} failed: {e}")
     return None
+
+def fetch_via_cobalt_dynamic(youtube_url: str):
+    logger.info("Trying Dynamic Cobalt fallback...")
+    instances = []
+    try:
+        req = urllib.request.Request("https://cobalt-api.kwiatekmateusz.com/instances", headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            for inst in data:
+                if inst.get('api_online') and inst.get('trust', 0) > 0.7:
+                    if 'url' in inst:
+                        instances.append(inst['url'])
+    except Exception as e:
+        logger.warning(f"Failed to fetch Cobalt instances: {e}")
+        instances = ["https://api.cobalt.tools", "https://cobalt.cachyos.org", "https://co.wuk.sh"]
+
+    for base in instances:
+        try:
+            payload = json.dumps({"url": youtube_url, "videoQuality": "1080"}).encode('utf-8')
+            req = urllib.request.Request(
+                f"{base}/api/json",
+                data=payload,
+                headers={'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                res = json.loads(resp.read().decode('utf-8'))
+                if res.get('status') in ['stream', 'redirect']:
+                    return res.get('url')
+        except Exception as e:
+            logger.warning(f"Cobalt instance {base} failed: {e}")
+    return None
+
+def fetch_via_yt1s(youtube_url: str):
 
 def fetch_via_y2mate(youtube_url: str):
     logger.info("Trying y2mate.com fallback...")
@@ -254,13 +270,13 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
         finally:
             socket.getaddrinfo = old_getaddrinfo # Restore even if loop ends
 
-    # 2. طبقة الـ Web APIs (yt1s, y2mate) - تعمل بنسبة 100% لأنها لا تستخدم سيرفرات يوتيوب مباشرة
+    # 2. طبقة الـ Web APIs (yt1s, y2mate, Piped, Cobalt) - تعمل بنسبة 100% لأنها لا تستخدم سيرفرات يوتيوب مباشرة
     import ssl
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    for fetcher in [fetch_via_yt1s, fetch_via_y2mate]:
+    for fetcher in [fetch_via_piped, fetch_via_cobalt_dynamic, fetch_via_yt1s, fetch_via_y2mate]:
         dlink = fetcher(youtube_url)
         if dlink:
             logger.info(f"Downloading from web API fallback: {dlink[:50]}...")
@@ -342,51 +358,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     if last_exception:
         logger.warning(f"All yt-dlp clients failed: {last_exception}")
 
-    # 3. طبقة Cobalt API (الحل الذكي النهائي لتجاوز الحظر)
-    COBALT_INSTANCES = [
-        "https://co.wuk.sh",
-        "https://cobalt.q0.o.lolo.wtf",
-        "https://cobalt.cachyos.org",
-        "https://cobalt.starnix.network",
-        "https://cobalt.ducko.net",
-        "https://cobalt.zorner.me",
-        "https://api.cobalt.tools"
-    ]
-    
-    logger.info("Trying Cobalt API fallback...")
-    for base in COBALT_INSTANCES:
-        try:
-            req = urllib.request.Request(
-                f"{base}/api/json",
-                data=json.dumps({"url": youtube_url, "videoQuality": "1080"}).encode('utf-8'),
-                headers={
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'Mozilla/5.0'
-                }
-            )
-            import ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
-                res = json.loads(resp.read().decode('utf-8'))
-                if res.get('status') in ['stream', 'redirect']:
-                    video_url = res.get('url')
-                    if video_url:
-                        logger.info(f"Downloading from Cobalt instance {base}")
-                        req_dl = urllib.request.Request(video_url, headers={'User-Agent': 'Mozilla/5.0'})
-                        with urllib.request.urlopen(req_dl, timeout=30, context=ctx) as r:
-                            with open(final_mp4, 'wb') as f:
-                                while True:
-                                    chunk = r.read(8192)
-                                    if not chunk: break
-                                    f.write(chunk)
-                        if os.path.getsize(final_mp4) > 100000:
-                            logger.info(f"SUCCESS download via Cobalt {base}")
-                            return final_mp4, get_video_info(youtube_url)
-        except Exception as e:
-            logger.warning(f"Cobalt instance {base} failed: {e}")
+    # removed redundant static cobalt implementation
 
     raise RuntimeError("تعذر تحميل المقطع بعد تجربة جميع الحلول والطبقات الذكية. يرجى التأكد من الرابط.")
 
