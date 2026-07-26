@@ -352,32 +352,41 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
 
     # 3. طبقة Pytubefix (حل ذكي ومضمون جداً باستخدام client WEB الذي يوفر Streams منفصلة)
     if PYTUBEFIX_AVAILABLE:
-        try:
-            logger.info("Trying pytubefix fallback (client WEB)...")
-            from pytubefix import YouTube
-            yt = YouTube(youtube_url, client='WEB')
-            v_stream = yt.streams.filter(type='video', file_extension='mp4').order_by('resolution').desc().first()
-            a_stream = yt.streams.filter(type='audio').order_by('abr').desc().first()
-            
-            if v_stream and a_stream:
-                logger.info(f"Downloading with pytubefix video/audio separately...")
-                v_path = v_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_v.mp4")
-                a_path = a_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_a.mp4")
+        for attempt in range(3):
+            try:
+                current_proxy = proxy_manager.get_proxy()
+                proxies = None
+                if current_proxy:
+                    proxy_url = current_proxy if current_proxy.startswith('http') else f"http://{current_proxy}"
+                    proxies = {'http': proxy_url, 'https': proxy_url}
+                    
+                logger.info(f"Trying pytubefix fallback (client WEB)... Attempt {attempt+1}, Proxy: {current_proxy}")
+                from pytubefix import YouTube
+                yt = YouTube(youtube_url, client='WEB', proxies=proxies)
+                v_stream = yt.streams.filter(type='video', file_extension='mp4').order_by('resolution').desc().first()
+                a_stream = yt.streams.filter(type='audio').order_by('abr').desc().first()
                 
-                # Merge using ffmpeg
-                import subprocess
-                cmd = ['ffmpeg', '-y', '-i', v_path, '-i', a_path, '-c:v', 'copy', '-c:a', 'aac', final_mp4]
-                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-                # Cleanup temp files
-                if os.path.exists(v_path): os.remove(v_path)
-                if os.path.exists(a_path): os.remove(a_path)
-                
-                if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
-                    logger.info("SUCCESS download via pytubefix")
-                    return final_mp4, get_video_info(youtube_url)
-        except Exception as e:
-            logger.warning(f"Pytubefix fallback failed: {e}")
+                if v_stream and a_stream:
+                    logger.info(f"Downloading with pytubefix video/audio separately...")
+                    v_path = v_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_v.mp4")
+                    a_path = a_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_a.mp4")
+                    
+                    # Merge using ffmpeg
+                    import subprocess
+                    cmd = ['ffmpeg', '-y', '-i', v_path, '-i', a_path, '-c:v', 'copy', '-c:a', 'aac', final_mp4]
+                    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    # Cleanup temp files
+                    if os.path.exists(v_path): os.remove(v_path)
+                    if os.path.exists(a_path): os.remove(a_path)
+                    
+                    if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
+                        logger.info("SUCCESS download via pytubefix")
+                        return final_mp4, get_video_info(youtube_url)
+            except Exception as e:
+                logger.warning(f"Pytubefix fallback failed with proxy {current_proxy}: {e}")
+                if current_proxy and ("Sign in" in str(e) or "bot" in str(e).lower() or "timeout" in str(e).lower() or "HTTP Error 429" in str(e)):
+                    proxy_manager.remove_proxy(current_proxy)
 
     # 4. طبقة yt-dlp مع عملاء اللاعبين المضمونة ومع دعم البروكسيات
     bulletproof_clients = [
@@ -388,55 +397,58 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     ]
 
     last_exception = None
-    for client_list in bulletproof_clients:
-        max_proxy_retries = 3
-        for attempt in range(max_proxy_retries):
-            current_proxy = proxy_manager.get_proxy()
-            try:
-                logger.info(f"Trying yt-dlp with client: {client_list} (Attempt {attempt+1}/{max_proxy_retries}, Proxy: {current_proxy})")
-                ydl_opts = {
-                    'format': 'best/bestvideo+bestaudio/b',
-                    'outtmpl': out_template,
-                    'merge_output_format': 'mp4',
-                    'quiet': True,
-                    'no_warnings': True,
-                    'nocheckcertificate': True,
-                    'socket_timeout': 30,
-                    'retries': 3,
-                    'noplaylist': True,
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': client_list
-                        }
-                    },
-                    'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
-                }
+    max_proxy_retries = 10
+    client_idx = 0
+    
+    for attempt in range(max_proxy_retries):
+        current_proxy = proxy_manager.get_proxy()
+        client_list = bulletproof_clients[client_idx % len(bulletproof_clients)]
+        client_idx += 1
+        
+        try:
+            logger.info(f"Trying yt-dlp with client: {client_list} (Attempt {attempt+1}/{max_proxy_retries}, Proxy: {current_proxy})")
+            ydl_opts = {
+                'format': 'best/bestvideo+bestaudio/b',
+                'outtmpl': out_template,
+                'merge_output_format': 'mp4',
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+                'socket_timeout': 15,
+                'retries': 2,
+                'noplaylist': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': client_list
+                    }
+                },
+                'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
+            }
+            
+            if current_proxy:
+                proxy_url = current_proxy if current_proxy.startswith('http') else f"http://{current_proxy}"
+                ydl_opts['proxy'] = proxy_url
                 
-                if current_proxy:
-                    ydl_opts['proxy'] = current_proxy
-                    
-                if cookie_path:
-                    ydl_opts['cookiefile'] = cookie_path
+            if cookie_path:
+                ydl_opts['cookiefile'] = cookie_path
 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(youtube_url, download=True)
-                    downloaded_file = ydl.prepare_filename(info)
-                    base, _ = os.path.splitext(downloaded_file)
-                    mp4_file = base + ".mp4"
-                    if os.path.exists(mp4_file):
-                        logger.info(f"SUCCESS download via yt-dlp {client_list} using proxy {current_proxy}")
-                        return mp4_file, info
-                    if os.path.exists(downloaded_file):
-                        return downloaded_file, info
-            except Exception as e:
-                logger.warning(f"yt-dlp client {client_list} with proxy {current_proxy} failed: {e}")
-                last_exception = e
-                # If error is bot detection or network error, remove proxy
-                if current_proxy and ("Sign in" in str(e) or "bot" in str(e).lower() or "timeout" in str(e).lower()):
-                    proxy_manager.remove_proxy(current_proxy)
-                
-                # If no proxy was used and we got blocked, it means Render IP is blocked, we MUST try next attempt with a proxy
-                continue
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+                base, _ = os.path.splitext(downloaded_file)
+                mp4_file = base + ".mp4"
+                if os.path.exists(mp4_file):
+                    logger.info(f"SUCCESS download via yt-dlp {client_list} using proxy {current_proxy}")
+                    return mp4_file, info
+                if os.path.exists(downloaded_file):
+                    return downloaded_file, info
+        except Exception as e:
+            logger.warning(f"yt-dlp client {client_list} with proxy {current_proxy} failed: {e}")
+            last_exception = e
+            # If error is bot detection or network error, remove proxy
+            if current_proxy and ("Sign in" in str(e) or "bot" in str(e).lower() or "timeout" in str(e).lower() or "HTTP Error 429" in str(e)):
+                proxy_manager.remove_proxy(current_proxy)
+            continue
 
     if last_exception:
         logger.warning(f"All yt-dlp clients and proxies failed: {last_exception}")
@@ -459,7 +471,7 @@ def download_background_media(media_url: str, output_dir: str, task_id: str) -> 
         return bg_path
 
     # المنصات الأخرى (بنترست، تيك توك، إلخ)
-    max_proxy_retries = 3
+    max_proxy_retries = 10
     last_exception = None
     
     for attempt in range(max_proxy_retries):
@@ -475,7 +487,8 @@ def download_background_media(media_url: str, output_dir: str, task_id: str) -> 
         }
         
         if current_proxy:
-            ydl_opts['proxy'] = current_proxy
+            proxy_url = current_proxy if current_proxy.startswith('http') else f"http://{current_proxy}"
+            ydl_opts['proxy'] = proxy_url
             
         if cookie_path:
             ydl_opts['cookiefile'] = cookie_path
