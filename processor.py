@@ -160,7 +160,48 @@ def fetch_via_cobalt_dynamic(youtube_url: str):
     return None
 
 def fetch_via_yt1s(youtube_url: str):
-
+    logger.info("Trying yt1s.com fallback...")
+    try:
+        search_data = urllib.parse.urlencode({'q': youtube_url, 'vt': 'home'}).encode('utf-8')
+        req = urllib.request.Request("https://yt1s.com/api/ajaxSearch/index", data=search_data, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Accept': '*/*',
+            'Origin': 'https://yt1s.com',
+            'Referer': 'https://yt1s.com/en361',
+            'Accept-Language': 'en-US,en;q=0.9'
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+            if res.get('status') == 'ok':
+                vid = res.get('vid')
+                links = res.get('links', {}).get('mp4', {})
+                k_val = None
+                for quality in ['137', '136', 'auto', '18']:
+                    if quality in links:
+                        k_val = links[quality].get('k')
+                        break
+                if not k_val and links:
+                    k_val = list(links.values())[0].get('k')
+                
+                if vid and k_val:
+                    conv_data = urllib.parse.urlencode({'vid': vid, 'k': k_val}).encode('utf-8')
+                    req_conv = urllib.request.Request("https://yt1s.com/api/ajaxConvert/convert", data=conv_data, headers={
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'Accept': '*/*',
+                        'Origin': 'https://yt1s.com',
+                        'Referer': 'https://yt1s.com/en361',
+                        'Accept-Language': 'en-US,en;q=0.9'
+                    })
+                    with urllib.request.urlopen(req_conv, timeout=15) as conv_resp:
+                        conv_res = json.loads(conv_resp.read().decode('utf-8'))
+                        dlink = conv_res.get('dlink')
+                        if dlink:
+                            return dlink
+    except Exception as e:
+        logger.warning(f"yt1s fallback failed: {e}")
+    return None
 def fetch_via_y2mate(youtube_url: str):
     logger.info("Trying y2mate.com fallback...")
     try:
