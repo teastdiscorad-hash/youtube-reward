@@ -284,16 +284,18 @@ async def debug_downloaders():
     test_pin = "https://pin.it/4xLWrFj5x"
     
     # 1. Test pytubefix
-    # 1. Test pytubefix with WEB client and env
+    # 1. Test pytubefix with ALL clients and env
     import shutil
-    try:
-        if PYTUBEFIX_AVAILABLE:
-            yt = YouTube(test_url, client='WEB')
-            results['pytubefix_web'] = f"Success! Title: {yt.title}"
-        else:
-            results['pytubefix_web'] = "Not available."
-    except Exception as e:
-        results['pytubefix_web'] = f"Exception: {e}\n{traceback.format_exc()}"
+    from pytubefix import YouTube
+    clients = ['WEB', 'ANDROID', 'IOS', 'TV', 'MWEB', 'WEB_EMBED', 'WEB_CREATOR', 'ANDROID_MUSIC', 'ANDROID_VR', 'ANDROID_PRODUCER', 'IOS_MUSIC']
+    client_results = {}
+    for c in clients:
+        try:
+            yt = YouTube(test_url, client=c)
+            client_results[c] = f"Success! Title: {yt.title}"
+        except Exception as e:
+            client_results[c] = f"Failed: {str(e)[:50]}"
+    results['pytubefix_clients'] = client_results
         
     results['env_check'] = {
         'ffmpeg': shutil.which('ffmpeg') or 'Not Found',
