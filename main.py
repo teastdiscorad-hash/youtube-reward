@@ -20,8 +20,6 @@ from processor import (
     download_youtube_media,
     download_background_media,
     create_shorts_video,
-    fetch_via_yt1s,
-    fetch_via_y2mate,
     PYTUBEFIX_AVAILABLE
 )
 
