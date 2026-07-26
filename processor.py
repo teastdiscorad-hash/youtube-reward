@@ -67,12 +67,27 @@ def get_video_info(youtube_url: str):
     except Exception as e:
         logger.warning(f"oEmbed failed: {e}")
 
-    # 2. yt-dlp عبر android_vr client
+    # 2. Pytubefix (حل جذري ومضمون لجلب المعلومات متجاوزاً حماية البوتات)
+    if PYTUBEFIX_AVAILABLE:
+        try:
+            from pytubefix import YouTube
+            yt = YouTube(youtube_url, client='WEB')
+            return {
+                'id': video_id or "youtube_video",
+                'title': yt.title,
+                'duration': yt.length,
+                'duration_string': f"{int(yt.length // 60)} دقيقة و {int(yt.length % 60)} ثانية" if yt.length else "غير محدد",
+                'thumbnail': yt.thumbnail_url or (f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else "")
+            }
+        except Exception as e:
+            logger.warning(f"pytubefix info failed: {e}")
+
+    # 3. yt-dlp عبر android_vr client
     cookie_path = find_cookie_file()
     for client in [['android_vr'], ['android_creator'], ['tv_embedded']]:
         try:
             ydl_opts = {
-                'quiet': True, 'no_warnings': True, 'socket_timeout': 8,
+                'quiet': True, 'no_warnings': True, 'socket_timeout': 15,
                 'extractor_args': {'youtube': {'player_client': client}},
                 'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
             }
@@ -335,15 +350,29 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
             except Exception as e:
                 logger.warning(f"Failed to download from web API dlink: {e}")
 
-    # 3. طبقة Pytubefix (حل ذكي ومضمون جداً)
+    # 3. طبقة Pytubefix (حل ذكي ومضمون جداً باستخدام client WEB الذي يوفر Streams منفصلة)
     if PYTUBEFIX_AVAILABLE:
         try:
-            logger.info("Trying pytubefix fallback...")
-            yt = YouTube(youtube_url)
-            ys = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-            if ys:
-                logger.info(f"Downloading with pytubefix: {ys.url[:50]}...")
-                ys.download(output_path=os.path.dirname(final_mp4), filename=os.path.basename(final_mp4))
+            logger.info("Trying pytubefix fallback (client WEB)...")
+            from pytubefix import YouTube
+            yt = YouTube(youtube_url, client='WEB')
+            v_stream = yt.streams.filter(type='video', file_extension='mp4').order_by('resolution').desc().first()
+            a_stream = yt.streams.filter(type='audio').order_by('abr').desc().first()
+            
+            if v_stream and a_stream:
+                logger.info(f"Downloading with pytubefix video/audio separately...")
+                v_path = v_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_v.mp4")
+                a_path = a_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_a.mp4")
+                
+                # Merge using ffmpeg
+                import subprocess
+                cmd = ['ffmpeg', '-y', '-i', v_path, '-i', a_path, '-c:v', 'copy', '-c:a', 'aac', final_mp4]
+                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Cleanup temp files
+                if os.path.exists(v_path): os.remove(v_path)
+                if os.path.exists(a_path): os.remove(a_path)
+                
                 if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
                     logger.info("SUCCESS download via pytubefix")
                     return final_mp4, get_video_info(youtube_url)
