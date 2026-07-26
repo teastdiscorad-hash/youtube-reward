@@ -480,9 +480,40 @@ async def generate_endpoint(
     
     return {"success": True, "task_id": task_id}
 
+def save_tasks_db():
+    try:
+        db_path = os.path.join(TEMP_DIR, "tasks_db.json")
+        with open(db_path, "w", encoding="utf-8") as f:
+            json.dump(tasks_db, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+def load_tasks_db():
+    global tasks_db
+    try:
+        db_path = os.path.join(TEMP_DIR, "tasks_db.json")
+        if os.path.exists(db_path):
+            with open(db_path, "r", encoding="utf-8") as f:
+                tasks_db.update(json.load(f))
+    except Exception:
+        pass
+
+load_tasks_db()
+
 @app.get("/api/status/{task_id}")
 async def status_endpoint(task_id: str):
     """الاستعلام عن حالة الطلب"""
+    out_name = f"Short_{task_id}.mp4"
+    if os.path.exists(os.path.join(OUTPUT_DIR, out_name)):
+        return {
+            "task_id": task_id,
+            "status": "completed",
+            "message": "تمت معالجة الفيديوهات بنجاح! جاهز للتنزيل.",
+            "output_file": out_name,
+            "download_url": f"/download/{task_id}"
+        }
+    if task_id not in tasks_db:
+        load_tasks_db()
     if task_id not in tasks_db:
         raise HTTPException(status_code=404, detail="الطلب غير موجود")
     return tasks_db[task_id]
@@ -490,12 +521,16 @@ async def status_endpoint(task_id: str):
 @app.get("/download/{task_id}")
 async def download_endpoint(task_id: str):
     """تحميل الفيديو النهائي"""
+    out_name = f"Short_{task_id}.mp4"
+    file_path = os.path.join(OUTPUT_DIR, out_name)
+    if os.path.exists(file_path):
+        return FileResponse(
+            path=file_path,
+            filename=out_name,
+            media_type="video/mp4"
+        )
     if task_id not in tasks_db or tasks_db[task_id].get("status") != "completed":
         raise HTTPException(status_code=404, detail="الملف غير جاهز أو غير موجود")
-        
-    file_path = os.path.join(OUTPUT_DIR, tasks_db[task_id]["output_file"])
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="لم يتم العثور على الملف المعالج")
         
     return FileResponse(
         path=file_path,
@@ -517,6 +552,7 @@ def run_processing_job_video(
     def update_status(msg: str):
         if task_id in tasks_db:
             tasks_db[task_id]["message"] = msg
+            save_tasks_db()
 
     try:
         cleanup_old_files()
@@ -559,10 +595,12 @@ def run_processing_job_video(
         tasks_db[task_id]["message"] = "تمت معالجة الفيديوهات بنجاح! جاهز للتنزيل."
         tasks_db[task_id]["output_file"] = output_filename
         tasks_db[task_id]["download_url"] = f"/download/{task_id}"
+        save_tasks_db()
         
     except Exception as e:
         tasks_db[task_id]["status"] = "failed"
         tasks_db[task_id]["message"] = f"تعذر معالجة المقطع: {str(e)}"
+        save_tasks_db()
 
 @app.post("/api/generate-video")
 async def generate_video_endpoint(

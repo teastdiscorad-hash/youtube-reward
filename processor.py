@@ -356,7 +356,7 @@ def create_shorts_video(
         "-i", video_path, "-loop", "1", "-i", image_path,
         "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+        "-c:v", "libx264", "-preset", "superfast", "-threads", "2", "-crf", "22",
         "-c:a", "aac", "-b:a", "192k",
         "-shortest", "-pix_fmt", "yuv420p", output_path
     ])
@@ -431,7 +431,7 @@ def create_shorts_video_from_video(
         "-i", primary_video_path, "-i", bg_video_path,
         "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "0:a?",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+        "-c:v", "libx264", "-preset", "superfast", "-threads", "2", "-crf", "22",
         "-c:a", "aac", "-b:a", "192k",
         "-shortest", "-pix_fmt", "yuv420p", output_path
     ])
