@@ -115,9 +115,24 @@ def get_video_info(youtube_url: str):
         'thumbnail': f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
     }
 
+def fetch_via_cobalt_fast(youtube_url: str):
+    try:
+        req = urllib.request.Request(
+            "https://api.cobalt.tools/api/json",
+            data=json.dumps({"url": youtube_url}).encode('utf-8'),
+            headers={'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+            if res.get('status') in ['stream', 'redirect', 'picker']:
+                return res.get('url')
+    except Exception:
+        pass
+    return None
+
 def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, status_callback=None):
     """
-    تحميل فيديو يوتيوب مباشرة عبر مكتبة yt (yt-dlp / pytubefix) بأعلى جودة وسرعة
+    تحميل فيديو يوتيوب عبر مكتبة yt مع التجاوز الذكي لحظر البوتات والـ IP السحابي
     """
     os.makedirs(output_dir, exist_ok=True)
     final_mp4 = os.path.join(output_dir, f"{task_id}_raw.mp4")
@@ -125,7 +140,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, stat
     cookie_path = find_cookie_file()
     video_id = extract_youtube_id(youtube_url)
 
-    # 1. التجربة المباشرة عبر مكتبة yt-dlp الأساسية بمختلف العملاء الممتازة
+    # 1. المحاولة المباشرة عبر عملاء yt-dlp المتخصصين
     bulletproof_clients = [
         ['android_vr'],
         ['android_creator'],
@@ -138,7 +153,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, stat
     for client_list in bulletproof_clients:
         try:
             client_name = client_list[0]
-            if status_callback: status_callback(f"📥 [مكتبة yt] جاري تحميل الفيديو عبر عميل {client_name}...")
+            if status_callback: status_callback(f"📥 [مكتبة yt] جاري التحميل عبر عميل {client_name}...")
             logger.info(f"Downloading with yt-dlp client: {client_list}")
             ydl_opts = {
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
@@ -147,8 +162,8 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, stat
                 'quiet': True,
                 'no_warnings': True,
                 'nocheckcertificate': True,
-                'socket_timeout': 30,
-                'retries': 3,
+                'socket_timeout': 15,
+                'retries': 2,
                 'noplaylist': True,
                 'extractor_args': {
                     'youtube': {
@@ -167,44 +182,74 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, stat
                 base, _ = os.path.splitext(downloaded_file)
                 mp4_file = base + ".mp4"
                 if os.path.exists(mp4_file) and os.path.getsize(mp4_file) > 100000:
-                    logger.info(f"SUCCESS download via yt-dlp client {client_list}")
                     if status_callback: status_callback("✅ تم التحميل بنجاح عبر مكتبة yt-dlp!")
                     return mp4_file, info
                 if os.path.exists(downloaded_file) and os.path.getsize(downloaded_file) > 100000:
                     if status_callback: status_callback("✅ تم التحميل بنجاح عبر مكتبة yt-dlp!")
                     return downloaded_file, info
         except Exception as e:
-            logger.warning(f"yt-dlp client {client_list} failed: {e}")
+            logger.warning(f"yt-dlp client {client_list} direct failed: {e}")
             last_exception = e
 
-    # 2. تجربة مكتبة pytubefix المباشرة
-    if PYTUBEFIX_AVAILABLE:
+    # 2. تجربة التخطي الذكي بالبروكسي عند حظر سيرفر Render (Sign in to confirm you're not a bot)
+    if status_callback: status_callback("🔄 [تجاوز الحظر] جاري تجربة البروكسي لتجاوز حظر البوتات...")
+    for attempt in range(5):
+        current_proxy = proxy_manager.get_proxy()
+        if not current_proxy:
+            break
         try:
-            if status_callback: status_callback("🛡️ [مكتبة pytubefix] جاري تجربة التحميل عبر pytubefix...")
-            logger.info("Trying pytubefix direct fallback...")
-            from pytubefix import YouTube
-            yt = YouTube(youtube_url, client='WEB')
-            v_stream = yt.streams.filter(type='video', file_extension='mp4').order_by('resolution').desc().first()
-            a_stream = yt.streams.filter(type='audio').order_by('abr').desc().first()
-            
-            if v_stream and a_stream:
-                v_path = v_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_v.mp4")
-                a_path = a_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_a.mp4")
-                
-                cmd = ['ffmpeg', '-y', '-i', v_path, '-i', a_path, '-c:v', 'copy', '-c:a', 'aac', final_mp4]
-                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                
-                if os.path.exists(v_path): os.remove(v_path)
-                if os.path.exists(a_path): os.remove(a_path)
-                
-                if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
-                    logger.info("SUCCESS download via pytubefix")
-                    if status_callback: status_callback("✅ تم تحميل الفيديو بنجاح عبر pytubefix!")
-                    return final_mp4, get_video_info(youtube_url)
+            proxy_url = current_proxy if current_proxy.startswith('http') else f"http://{current_proxy}"
+            if status_callback: status_callback(f"🛡️ [بروكسي سحابي] محاولة {attempt+1}/5 عبر البروكسي...")
+            ydl_opts = {
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'outtmpl': out_template,
+                'merge_output_format': 'mp4',
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+                'proxy': proxy_url,
+                'socket_timeout': 15,
+                'retries': 2,
+                'noplaylist': True,
+                'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+                base, _ = os.path.splitext(downloaded_file)
+                mp4_file = base + ".mp4"
+                if os.path.exists(mp4_file) and os.path.getsize(mp4_file) > 100000:
+                    if status_callback: status_callback("✅ تم التحميل بنجاح عبر البروكسي!")
+                    return mp4_file, info
+                if os.path.exists(downloaded_file) and os.path.getsize(downloaded_file) > 100000:
+                    return downloaded_file, info
         except Exception as e:
-            logger.warning(f"pytubefix failed: {e}")
+            logger.warning(f"Proxy attempt {attempt+1} failed: {e}")
+            proxy_manager.remove_proxy(current_proxy)
 
-    raise RuntimeError(f"تعذر تحميل المقطع بواسطة مكتبة yt: {last_exception}")
+    # 3. خط الدفاع الأخير المباشر (Cobalt API Proxy)
+    if status_callback: status_callback("🌐 [طبقة Cobalt الوسيطة] جاري جلب الفيديو عبر خادم وسيط...")
+    dlink = fetch_via_cobalt_fast(youtube_url)
+    if dlink:
+        try:
+            req_dl = urllib.request.Request(dlink, headers={'User-Agent': 'Mozilla/5.0'})
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req_dl, timeout=20, context=ctx) as r:
+                with open(final_mp4, 'wb') as f:
+                    while True:
+                        chunk = r.read(16384)
+                        if not chunk: break
+                        f.write(chunk)
+            if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
+                if status_callback: status_callback("✅ تم التحميل بنجاح عبر الخادم الوسيط!")
+                return final_mp4, get_video_info(youtube_url)
+        except Exception as e:
+            logger.warning(f"Cobalt fallback failed: {e}")
+
+    raise RuntimeError(f"تعذر تحميل المقطع بعد تجربة التجاوز: {last_exception}")
 
 def download_background_media(media_url: str, output_dir: str, task_id: str, status_callback=None) -> str:
     """
