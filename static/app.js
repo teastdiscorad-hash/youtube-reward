@@ -227,10 +227,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function pollTaskStatus(taskId) {
+        let errorCount = 0;
+        const MAX_CONSECUTIVE_ERRORS = 60;
         const interval = setInterval(async () => {
             try {
                 const res = await fetch(`/api/status/${taskId}`);
+                if (!res.ok) throw new Error('Network failure');
                 const data = await res.json();
+                errorCount = 0;
 
                 if (data.status === 'downloading' || data.status === 'processing') {
                     if (statusTitle) statusTitle.textContent = data.status === 'downloading' ? 'جاري التحميل وفحص الطبقات...' : 'جاري المعالجة والدمج بـ FFmpeg...';
@@ -251,6 +255,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) {
                 console.error('Polling error:', e);
+                errorCount++;
+                if (statusDesc) statusDesc.textContent = `🔄 جاري إعادة الاتصال بالخادم... (${errorCount}/${MAX_CONSECUTIVE_ERRORS})`;
+                if (errorCount >= MAX_CONSECUTIVE_ERRORS) {
+                    clearInterval(interval);
+                    showError('فقد الاتصال بالخادم بعد عدة محاولات. يرجى المحاولة مرة أخرى.');
+                }
             }
         }, 1000);
     }

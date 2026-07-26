@@ -258,8 +258,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Polling Loop with Safety Limit
     function pollTaskStatus(taskId) {
-        const MAX_POLLING_ATTEMPTS = 300;
-        const MAX_CONSECUTIVE_ERRORS = 5;
+        const MAX_POLLING_ATTEMPTS = 600;
+        const MAX_CONSECUTIVE_ERRORS = 60;
         let pollCount = 0;
         let errorCount = 0;
 
@@ -313,9 +313,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.error('Polling error:', e);
                 errorCount++;
+                if (statusMessage) statusMessage.textContent = `🔄 جاري إعادة الاتصال بالخادم... (${errorCount}/${MAX_CONSECUTIVE_ERRORS})`;
                 if (errorCount >= MAX_CONSECUTIVE_ERRORS) {
                     clearInterval(interval);
-                    showError('فقد الاتصال بالخادم أثناء المعالجة.');
+                    showError('فقد الاتصال بالخادم بعد عدة محاولات.');
                 }
             }
         }, 1000);

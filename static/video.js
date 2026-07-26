@@ -222,8 +222,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function pollTaskStatus(taskId) {
-        const MAX_POLLING_ATTEMPTS = 300; // 10 minutes at 2s interval
-        const MAX_CONSECUTIVE_ERRORS = 5;
+        const MAX_POLLING_ATTEMPTS = 600; // 10 minutes at 1s interval
+        const MAX_CONSECUTIVE_ERRORS = 60; // Allow 60s for server restarts or network glitches
         let pollCount = 0;
         let errorCount = 0;
 
@@ -247,17 +247,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.status === 'downloading') {
                     if (statusMessage) statusMessage.textContent = data.message;
                     if (progressBar) progressBar.style.width = '30%';
-                    if (steps[0]) steps[0].classList.add('active');
+                    if (steps && steps[0]) steps[0].classList.add('active');
                 } else if (data.status === 'processing') {
                     if (statusMessage) statusMessage.textContent = data.message;
                     if (progressBar) progressBar.style.width = '70%';
-                    if (steps[0]) steps[0].classList.replace('active', 'completed');
-                    if (steps[1]) steps[1].classList.add('active');
+                    if (steps && steps[0]) steps[0].classList.replace('active', 'completed');
+                    if (steps && steps[1]) steps[1].classList.add('active');
                 } else if (data.status === 'completed') {
                     clearInterval(interval);
                     if (progressBar) progressBar.style.width = '100%';
-                    if (steps[1]) steps[1].classList.replace('active', 'completed');
-                    if (steps[2]) steps[2].classList.add('completed');
+                    if (steps && steps[1]) steps[1].classList.replace('active', 'completed');
+                    if (steps && steps[2]) steps[2].classList.add('completed');
                     
                     setTimeout(() => {
                         if (statusBox) statusBox.classList.add('hidden');
@@ -275,9 +275,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.error('Polling error:', e);
                 errorCount++;
+                if (statusMessage) statusMessage.textContent = `🔄 جاري إعادة الاتصال بالخادم... (${errorCount}/${MAX_CONSECUTIVE_ERRORS})`;
                 if (errorCount >= MAX_CONSECUTIVE_ERRORS) {
                     clearInterval(interval);
-                    showError('فقد الاتصال بالخادم. يرجى المحاولة مرة أخرى.');
+                    showError('فقد الاتصال بالخادم بعد عدة محاولات. يرجى المحاولة مرة أخرى.');
                 }
             }
         }, 1000);
