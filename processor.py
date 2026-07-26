@@ -129,7 +129,7 @@ def fetch_via_gendownload(youtube_url: str, status_callback=None):
                 'Accept': 'application/json'
             }
         )
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.urlopen(req, timeout=4) as resp:
             res = json.loads(resp.read().decode('utf-8'))
             formats = res.get('formats', [])
             best_url = None
@@ -155,7 +155,7 @@ def fetch_via_ahm7xmakki(youtube_url: str, status_callback=None):
             'User-Agent': MOBILE_USER_AGENTS[0],
             'Accept': 'application/json'
         })
-        with urllib.request.urlopen(req, timeout=12) as resp:
+        with urllib.request.urlopen(req, timeout=4) as resp:
             res = json.loads(resp.read().decode('utf-8'))
             if res.get('success'):
                 media_info = res.get('mediaInfo', {})
@@ -187,7 +187,7 @@ def fetch_via_piped(youtube_url: str, status_callback=None):
         try:
             url = f"{base}/streams/{video_id}"
             req = urllib.request.Request(url, headers={'User-Agent': MOBILE_USER_AGENTS[0]})
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=4) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
                 streams = data.get('videoStreams', [])
                 best_stream = None
@@ -208,7 +208,7 @@ def fetch_via_cobalt_dynamic(youtube_url: str, status_callback=None):
     instances = []
     try:
         req = urllib.request.Request("https://cobalt-api.kwiatekmateusz.com/instances", headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=4) as resp:
             data = json.loads(resp.read().decode('utf-8'))
             for inst in data:
                 if inst.get('api_online') and inst.get('trust', 0) > 0.7:
@@ -226,7 +226,7 @@ def fetch_via_cobalt_dynamic(youtube_url: str, status_callback=None):
                 data=payload,
                 headers={'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=4) as resp:
                 res = json.loads(resp.read().decode('utf-8'))
                 if res.get('status') in ['stream', 'redirect']:
                     return res.get('url')
@@ -247,7 +247,7 @@ def fetch_via_yt1s(youtube_url: str, status_callback=None):
             'Referer': 'https://yt1s.com/en361',
             'Accept-Language': 'en-US,en;q=0.9'
         })
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=4) as resp:
             res = json.loads(resp.read().decode('utf-8'))
             if res.get('status') == 'ok':
                 vid = res.get('vid')
@@ -270,7 +270,7 @@ def fetch_via_yt1s(youtube_url: str, status_callback=None):
                         'Referer': 'https://yt1s.com/en361',
                         'Accept-Language': 'en-US,en;q=0.9'
                     })
-                    with urllib.request.urlopen(req_conv, timeout=15) as conv_resp:
+                    with urllib.request.urlopen(req_conv, timeout=6) as conv_resp:
                         conv_res = json.loads(conv_resp.read().decode('utf-8'))
                         dlink = conv_res.get('dlink')
                         if dlink:
@@ -292,7 +292,7 @@ def fetch_via_y2mate(youtube_url: str, status_callback=None):
             'Referer': 'https://www.y2mate.com/en885',
             'Accept-Language': 'en-US,en;q=0.9'
         })
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=4) as resp:
             res = json.loads(resp.read().decode('utf-8'))
             if res.get('status') == 'ok':
                 vid = res.get('vid')
@@ -315,7 +315,7 @@ def fetch_via_y2mate(youtube_url: str, status_callback=None):
                         'Referer': 'https://www.y2mate.com/en885',
                         'Accept-Language': 'en-US,en;q=0.9'
                     })
-                    with urllib.request.urlopen(req_conv, timeout=15) as conv_resp:
+                    with urllib.request.urlopen(req_conv, timeout=6) as conv_resp:
                         conv_res = json.loads(conv_resp.read().decode('utf-8'))
                         dlink = conv_res.get('dlink')
                         if dlink:
@@ -326,73 +326,15 @@ def fetch_via_y2mate(youtube_url: str, status_callback=None):
 
 def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, status_callback=None):
     """
-    تحميل فيديو يوتيوب بتقنيات متعددة وطبقات ذكية متدرجة
+    تحميل فيديو يوتيوب بتقنيات متعددة وطبقات ذكية متدرجة وفائقة السرعة
     """
     os.makedirs(output_dir, exist_ok=True)
     final_mp4 = os.path.join(output_dir, f"{task_id}_raw.mp4")
     out_template = os.path.join(output_dir, f"{task_id}_raw.%(ext)s")
     cookie_path = find_cookie_file()
-
-    # 1. طبقة Invidious Proxy (الأكثر أماناً لأنها تخفي سيرفر Render تماماً)
-    INVIDIOUS_INSTANCES = [
-        "https://invidious.nerdvpn.de",
-        "https://inv.nadeko.net",
-        "https://invidious.f5.si",
-        "https://yt.chocolatemoo53.com",
-        "https://invidious.tiekoetter.com",
-        "https://vid.pugices.pt",
-        "https://invidious.fdn.fr",
-        "https://invidious.privacyredirect.com",
-        "https://inv.tux.pizza"
-    ]
     video_id = extract_youtube_id(youtube_url)
-    
-    if video_id:
-        import ssl
-        import socket
-        
-        # قوة استخدام IPv4 فقط لمنع خطأ Network is unreachable على سيرفر Render (الذي لا يدعم IPv6)
-        old_getaddrinfo = socket.getaddrinfo
-        def new_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-            return old_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
-        socket.getaddrinfo = new_getaddrinfo
 
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        
-        if status_callback: status_callback("🌐 [طبقة Invidious Proxy] جاري فحص خوادم Invidious المعزولة...")
-        try:
-            for base in INVIDIOUS_INSTANCES:
-                for itag in [22, 18]:
-                    proxy_url = f"{base}/latest_version?id={video_id}&itag={itag}&local=true"
-                    logger.info(f"Trying Invidious proxy: {proxy_url}")
-                    try:
-                        req = urllib.request.Request(proxy_url, headers={
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-                        })
-                        with urllib.request.urlopen(req, timeout=12, context=ctx) as resp:
-                            if resp.getcode() == 200:
-                                if status_callback: status_callback(f"📥 جاري السحب من سيرفر Invidious ({base.split('//')[-1]})...")
-                                logger.info(f"Downloading from {base}...")
-                                with open(final_mp4, 'wb') as f:
-                                    while True:
-                                        chunk = resp.read(8192)
-                                        if not chunk:
-                                            break
-                                        f.write(chunk)
-                                # Ensure the file has some size
-                                if os.path.getsize(final_mp4) > 100000:
-                                    logger.info(f"SUCCESS download via Invidious proxy {base}")
-                                    socket.getaddrinfo = old_getaddrinfo # Restore
-                                    if status_callback: status_callback("✅ تم تحميل الفيديو بنجاح عبر Invidious Proxy!")
-                                    return final_mp4, get_video_info(youtube_url)
-                    except Exception as e:
-                        logger.warning(f"Failed Invidious proxy {base} itag={itag}: {e}")
-        finally:
-            socket.getaddrinfo = old_getaddrinfo # Restore even if loop ends
-
-    # 2. طبقة الـ Web APIs الشاملة (GenDownload, AHM7xMakki, Piped, Cobalt, yt1s, y2mate)
+    # 1. طبقة الـ Web APIs السريعة والمباشرة (GenDownload, AHM7xMakki, Cobalt, Piped, yt1s, y2mate)
     import ssl
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
@@ -401,31 +343,70 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, stat
     web_fetchers = [
         ("GenDownload API", fetch_via_gendownload),
         ("AHM7xMakki API", fetch_via_ahm7xmakki),
-        ("Piped API", fetch_via_piped),
         ("Cobalt API", fetch_via_cobalt_dynamic),
+        ("Piped API", fetch_via_piped),
         ("yt1s", fetch_via_yt1s),
         ("y2mate", fetch_via_y2mate)
     ]
 
     for name, fetcher in web_fetchers:
-        dlink = fetcher(youtube_url, status_callback=status_callback)
-        if dlink:
-            if status_callback: status_callback(f"📥 جاري سحب ملف الفيديو المباشر من {name}...")
-            logger.info(f"Downloading from web API fallback {name}: {dlink[:50]}...")
-            try:
+        try:
+            dlink = fetcher(youtube_url, status_callback=status_callback)
+            if dlink:
+                if status_callback: status_callback(f"⚡ [سريع] جاري تحميل الفيديو فورا من {name}...")
+                logger.info(f"Downloading from web API fallback {name}: {dlink[:50]}...")
                 req_dl = urllib.request.Request(dlink, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-                with urllib.request.urlopen(req_dl, timeout=30, context=ctx) as r:
+                with urllib.request.urlopen(req_dl, timeout=10, context=ctx) as r:
                     with open(final_mp4, 'wb') as f:
                         while True:
-                            chunk = r.read(8192)
+                            chunk = r.read(16384)
                             if not chunk: break
                             f.write(chunk)
-                if os.path.getsize(final_mp4) > 100000:
+                if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
                     logger.info(f"SUCCESS download via Web API {name}")
-                    if status_callback: status_callback(f"✅ تم تحميل الفيديو بنجاح عبر {name}!")
+                    if status_callback: status_callback(f"✅ تم تحميل الفيديو بنجاح من {name}!")
                     return final_mp4, get_video_info(youtube_url)
-            except Exception as e:
-                logger.warning(f"Failed to download from web API {name} dlink: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to download from web API {name}: {e}")
+
+    # 2. طبقة Invidious Proxy (سريعة جدا بمهلة 3 ثواني فقط لتجنب الانتظار)
+    INVIDIOUS_INSTANCES = [
+        "https://inv.tux.pizza",
+        "https://invidious.privacyredirect.com",
+        "https://inv.nadeko.net"
+    ]
+    
+    if video_id:
+        import socket
+        old_getaddrinfo = socket.getaddrinfo
+        def new_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+            return old_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+        socket.getaddrinfo = new_getaddrinfo
+
+        if status_callback: status_callback("🌐 [طبقة Invidious] جاري تجربة السحب المباشر السريع...")
+        try:
+            for base in INVIDIOUS_INSTANCES:
+                proxy_url = f"{base}/latest_version?id={video_id}&itag=18&local=true"
+                logger.info(f"Trying Invidious proxy: {proxy_url}")
+                try:
+                    req = urllib.request.Request(proxy_url, headers={'User-Agent': MOBILE_USER_AGENTS[0]})
+                    with urllib.request.urlopen(req, timeout=4, context=ctx) as resp:
+                        if resp.getcode() == 200:
+                            if status_callback: status_callback(f"📥 جاري التحميل من {base.split('//')[-1]}...")
+                            with open(final_mp4, 'wb') as f:
+                                while True:
+                                    chunk = resp.read(16384)
+                                    if not chunk: break
+                                    f.write(chunk)
+                            if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
+                                logger.info(f"SUCCESS download via Invidious proxy {base}")
+                                socket.getaddrinfo = old_getaddrinfo
+                                if status_callback: status_callback("✅ تم التحميل بنجاح عبر Invidious!")
+                                return final_mp4, get_video_info(youtube_url)
+                except Exception as e:
+                    logger.warning(f"Failed Invidious proxy {base}: {e}")
+        finally:
+            socket.getaddrinfo = old_getaddrinfo
 
     # 3. طبقة Pytubefix (حل ذكي ومضمون جداً مع دعم البروكسيات)
     if PYTUBEFIX_AVAILABLE:
