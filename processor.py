@@ -657,29 +657,13 @@ def create_shorts_video_from_video(
     start_time: float = 0,
     end_time: float = None
 ):
-    def get_duration(path):
-        cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-               "-of", "default=noprint_wrappers=1:nokey=1", path]
-        try:
-            return float(subprocess.check_output(cmd).decode("utf-8").strip())
-        except:
-            return 10.0
-
-    dur1 = get_duration(primary_video_path)
-    dur2 = get_duration(bg_video_path)
-    if end_time and end_time > start_time:
-        dur1 = min(dur1, end_time - start_time)
-    speed_factor = 1.0
-    if dur2 < dur1 and dur2 > 0:
-        speed_factor = dur1 / dur2
-
     overlay_pos = "(W-w)/2:(H-h)/2"
     if video_position == "top":
         overlay_pos = "(W-w)/2:120"
     elif video_position == "bottom":
         overlay_pos = "(W-w)/2:H-h-120"
 
-    bg_filter = f"[1:v]setpts=PTS*{speed_factor},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg];"
+    bg_filter = "[1:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg];"
 
     if layout in ("black_screen_transparent", "colorkey_transparent"):
         tol_str = f"{key_tolerance:.2f}"
@@ -708,7 +692,8 @@ def create_shorts_video_from_video(
         cmd.extend(["-to", str(end_time)])
 
     cmd.extend([
-        "-i", primary_video_path, "-i", bg_video_path,
+        "-i", primary_video_path,
+        "-stream_loop", "-1", "-i", bg_video_path,
         "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "0:a?",
         "-c:v", "libx264", "-preset", "fast", "-crf", "22",
