@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.error
 import yt_dlp
 import traceback
-
+from proxy_manager import proxy_manager
 try:
     from pytubefix import YouTube
     PYTUBEFIX_AVAILABLE = True
@@ -379,7 +379,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
         except Exception as e:
             logger.warning(f"Pytubefix fallback failed: {e}")
 
-    # 4. طبقة yt-dlp مع عملاء اللاعبين المضمونة
+    # 4. طبقة yt-dlp مع عملاء اللاعبين المضمونة ومع دعم البروكسيات
     bulletproof_clients = [
         ['android_vr'],
         ['android_creator'],
@@ -389,44 +389,57 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
 
     last_exception = None
     for client_list in bulletproof_clients:
-        try:
-            logger.info(f"Trying yt-dlp with client: {client_list}")
-            ydl_opts = {
-                'format': 'best/bestvideo+bestaudio/b',
-                'outtmpl': out_template,
-                'merge_output_format': 'mp4',
-                'quiet': True,
-                'no_warnings': True,
-                'nocheckcertificate': True,
-                'socket_timeout': 30,
-                'retries': 5,
-                'noplaylist': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': client_list
-                    }
-                },
-                'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
-            }
-            if cookie_path:
-                ydl_opts['cookiefile'] = cookie_path
+        max_proxy_retries = 3
+        for attempt in range(max_proxy_retries):
+            current_proxy = proxy_manager.get_proxy()
+            try:
+                logger.info(f"Trying yt-dlp with client: {client_list} (Attempt {attempt+1}/{max_proxy_retries}, Proxy: {current_proxy})")
+                ydl_opts = {
+                    'format': 'best/bestvideo+bestaudio/b',
+                    'outtmpl': out_template,
+                    'merge_output_format': 'mp4',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True,
+                    'socket_timeout': 30,
+                    'retries': 3,
+                    'noplaylist': True,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': client_list
+                        }
+                    },
+                    'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
+                }
+                
+                if current_proxy:
+                    ydl_opts['proxy'] = current_proxy
+                    
+                if cookie_path:
+                    ydl_opts['cookiefile'] = cookie_path
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(youtube_url, download=True)
-                downloaded_file = ydl.prepare_filename(info)
-                base, _ = os.path.splitext(downloaded_file)
-                mp4_file = base + ".mp4"
-                if os.path.exists(mp4_file):
-                    logger.info(f"SUCCESS download via yt-dlp {client_list}")
-                    return mp4_file, info
-                if os.path.exists(downloaded_file):
-                    return downloaded_file, info
-        except Exception as e:
-            logger.warning(f"yt-dlp client {client_list} failed: {e}")
-            last_exception = e
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(youtube_url, download=True)
+                    downloaded_file = ydl.prepare_filename(info)
+                    base, _ = os.path.splitext(downloaded_file)
+                    mp4_file = base + ".mp4"
+                    if os.path.exists(mp4_file):
+                        logger.info(f"SUCCESS download via yt-dlp {client_list} using proxy {current_proxy}")
+                        return mp4_file, info
+                    if os.path.exists(downloaded_file):
+                        return downloaded_file, info
+            except Exception as e:
+                logger.warning(f"yt-dlp client {client_list} with proxy {current_proxy} failed: {e}")
+                last_exception = e
+                # If error is bot detection or network error, remove proxy
+                if current_proxy and ("Sign in" in str(e) or "bot" in str(e).lower() or "timeout" in str(e).lower()):
+                    proxy_manager.remove_proxy(current_proxy)
+                
+                # If no proxy was used and we got blocked, it means Render IP is blocked, we MUST try next attempt with a proxy
+                continue
 
     if last_exception:
-        logger.warning(f"All yt-dlp clients failed: {last_exception}")
+        logger.warning(f"All yt-dlp clients and proxies failed: {last_exception}")
 
     # removed redundant static cobalt implementation
 
@@ -446,31 +459,45 @@ def download_background_media(media_url: str, output_dir: str, task_id: str) -> 
         return bg_path
 
     # المنصات الأخرى (بنترست، تيك توك، إلخ)
-    ydl_opts = {
-        'format': 'best/bestvideo+bestaudio/b',
-        'outtmpl': out_template,
-        'merge_output_format': 'mp4',
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-        'cookiefile': 'cookies.txt',  # استخدام ملف الكوكيز إن وجد
-        'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
-    }
-    if cookie_path:
-        ydl_opts['cookiefile'] = cookie_path
+    max_proxy_retries = 3
+    last_exception = None
+    
+    for attempt in range(max_proxy_retries):
+        current_proxy = proxy_manager.get_proxy()
+        ydl_opts = {
+            'format': 'best/bestvideo+bestaudio/b',
+            'outtmpl': out_template,
+            'merge_output_format': 'mp4',
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+            'http_headers': {'User-Agent': MOBILE_USER_AGENTS[0]}
+        }
+        
+        if current_proxy:
+            ydl_opts['proxy'] = current_proxy
+            
+        if cookie_path:
+            ydl_opts['cookiefile'] = cookie_path
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(media_url, download=True)
-            downloaded_file = ydl.prepare_filename(info)
-            base, _ = os.path.splitext(downloaded_file)
-            mp4_file = base + ".mp4"
-            if os.path.exists(mp4_file):
-                return mp4_file
-            return downloaded_file
-    except Exception as e:
-        logger.error(f"Background media download failed: {e}")
-        raise RuntimeError(f"تعذر تحميل مقطع الخلفية: {e}")
+        try:
+            logger.info(f"Downloading background media {media_url} (Attempt {attempt+1}, Proxy: {current_proxy})")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(media_url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+                base, _ = os.path.splitext(downloaded_file)
+                mp4_file = base + ".mp4"
+                if os.path.exists(mp4_file):
+                    return mp4_file
+                return downloaded_file
+        except Exception as e:
+            logger.error(f"Background media download failed with proxy {current_proxy}: {e}")
+            last_exception = e
+            if current_proxy and ("Sign in" in str(e) or "bot" in str(e).lower() or "timeout" in str(e).lower() or "HTTP Error 429" in str(e)):
+                proxy_manager.remove_proxy(current_proxy)
+            continue
+            
+    raise RuntimeError(f"تعذر تحميل مقطع الخلفية بعد تجربة البروكسيات: {last_exception}")
 
 def create_shorts_video(
     video_path: str,
