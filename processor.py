@@ -115,7 +115,66 @@ def get_video_info(youtube_url: str):
         'thumbnail': f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
     }
 
-def fetch_via_piped(youtube_url: str):
+def fetch_via_gendownload(youtube_url: str, status_callback=None):
+    if status_callback: status_callback("🚀 [طبقة GenDownload API] جاري استخراج روابط التحميل المباشرة...")
+    logger.info("Trying GenDownload API fallback...")
+    try:
+        payload = json.dumps({"url": youtube_url}).encode('utf-8')
+        req = urllib.request.Request(
+            "https://gendownload.com/api/extract",
+            data=payload,
+            headers={
+                'Content-Type': 'application/json',
+                'User-Agent': MOBILE_USER_AGENTS[0],
+                'Accept': 'application/json'
+            }
+        )
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+            formats = res.get('formats', [])
+            best_url = None
+            if isinstance(formats, list):
+                for fmt in formats:
+                    if isinstance(fmt, dict) and fmt.get('url'):
+                        quality = str(fmt.get('quality', ''))
+                        if '720' in quality or '1080' in quality or 'hd' in quality.lower():
+                            return fmt.get('url')
+                        if not best_url:
+                            best_url = fmt.get('url')
+            return best_url
+    except Exception as e:
+        logger.warning(f"GenDownload fallback failed: {e}")
+    return None
+
+def fetch_via_ahm7xmakki(youtube_url: str, status_callback=None):
+    if status_callback: status_callback("⚡ [طبقة AHM7xMakki API] جاري فحص الرابط وجلب الوسائط...")
+    logger.info("Trying AHM7xMakki API fallback...")
+    try:
+        url = f"https://ahm7xmakki.com/api/alldl?url={urllib.parse.quote(youtube_url)}"
+        req = urllib.request.Request(url, headers={
+            'User-Agent': MOBILE_USER_AGENTS[0],
+            'Accept': 'application/json'
+        })
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            res = json.loads(resp.read().decode('utf-8'))
+            if res.get('success'):
+                media_info = res.get('mediaInfo', {})
+                video_url = media_info.get('videoUrl')
+                if video_url:
+                    return video_url
+                qualities = media_info.get('qualities', [])
+                if isinstance(qualities, list):
+                    for q in qualities:
+                        if isinstance(q, dict) and q.get('url'):
+                            return q.get('url')
+                        elif isinstance(q, str) and q.startswith('http'):
+                            return q
+    except Exception as e:
+        logger.warning(f"AHM7xMakki fallback failed: {e}")
+    return None
+
+def fetch_via_piped(youtube_url: str, status_callback=None):
+    if status_callback: status_callback("🌐 [طبقة Piped API] جاري تجربة خوادم Piped الخارجية...")
     logger.info("Trying Piped API fallback...")
     video_id = extract_youtube_id(youtube_url)
     PIPED_INSTANCES = [
@@ -143,7 +202,8 @@ def fetch_via_piped(youtube_url: str):
             logger.warning(f"Piped API {base} failed: {e}")
     return None
 
-def fetch_via_cobalt_dynamic(youtube_url: str):
+def fetch_via_cobalt_dynamic(youtube_url: str, status_callback=None):
+    if status_callback: status_callback("🛠️ [طبقة Cobalt API] جاري فحص خوادم Cobalt الديناميكية...")
     logger.info("Trying Dynamic Cobalt fallback...")
     instances = []
     try:
@@ -174,7 +234,8 @@ def fetch_via_cobalt_dynamic(youtube_url: str):
             logger.warning(f"Cobalt instance {base} failed: {e}")
     return None
 
-def fetch_via_yt1s(youtube_url: str):
+def fetch_via_yt1s(youtube_url: str, status_callback=None):
+    if status_callback: status_callback("🔄 [طبقة yt1s] جاري استخراج رابط التحميل...")
     logger.info("Trying yt1s.com fallback...")
     try:
         search_data = urllib.parse.urlencode({'q': youtube_url, 'vt': 'home'}).encode('utf-8')
@@ -217,7 +278,9 @@ def fetch_via_yt1s(youtube_url: str):
     except Exception as e:
         logger.warning(f"yt1s fallback failed: {e}")
     return None
-def fetch_via_y2mate(youtube_url: str):
+
+def fetch_via_y2mate(youtube_url: str, status_callback=None):
+    if status_callback: status_callback("🎬 [طبقة y2mate] جاري التحقق من السيرفر...")
     logger.info("Trying y2mate.com fallback...")
     try:
         search_data = urllib.parse.urlencode({'k_query': youtube_url, 'q_auto': 1, 'ajax': 1}).encode('utf-8')
@@ -261,9 +324,9 @@ def fetch_via_y2mate(youtube_url: str):
         logger.warning(f"y2mate fallback failed: {e}")
     return None
 
-def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
+def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, status_callback=None):
     """
-    تحميل فيديو يوتيوب بتقنية android_vr / android_creator المضمونة 100% لتجاوز البوتات بدون كوكيز
+    تحميل فيديو يوتيوب بتقنيات متعددة وطبقات ذكية متدرجة
     """
     os.makedirs(output_dir, exist_ok=True)
     final_mp4 = os.path.join(output_dir, f"{task_id}_raw.mp4")
@@ -298,6 +361,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         
+        if status_callback: status_callback("🌐 [طبقة Invidious Proxy] جاري فحص خوادم Invidious المعزولة...")
         try:
             for base in INVIDIOUS_INSTANCES:
                 for itag in [22, 18]:
@@ -307,8 +371,9 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                         req = urllib.request.Request(proxy_url, headers={
                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
                         })
-                        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+                        with urllib.request.urlopen(req, timeout=12, context=ctx) as resp:
                             if resp.getcode() == 200:
+                                if status_callback: status_callback(f"📥 جاري السحب من سيرفر Invidious ({base.split('//')[-1]})...")
                                 logger.info(f"Downloading from {base}...")
                                 with open(final_mp4, 'wb') as f:
                                     while True:
@@ -320,22 +385,33 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                                 if os.path.getsize(final_mp4) > 100000:
                                     logger.info(f"SUCCESS download via Invidious proxy {base}")
                                     socket.getaddrinfo = old_getaddrinfo # Restore
+                                    if status_callback: status_callback("✅ تم تحميل الفيديو بنجاح عبر Invidious Proxy!")
                                     return final_mp4, get_video_info(youtube_url)
                     except Exception as e:
                         logger.warning(f"Failed Invidious proxy {base} itag={itag}: {e}")
         finally:
             socket.getaddrinfo = old_getaddrinfo # Restore even if loop ends
 
-    # 2. طبقة الـ Web APIs (yt1s, y2mate, Piped, Cobalt) - تعمل بنسبة 100% لأنها لا تستخدم سيرفرات يوتيوب مباشرة
+    # 2. طبقة الـ Web APIs الشاملة (GenDownload, AHM7xMakki, Piped, Cobalt, yt1s, y2mate)
     import ssl
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    for fetcher in [fetch_via_piped, fetch_via_cobalt_dynamic, fetch_via_yt1s, fetch_via_y2mate]:
-        dlink = fetcher(youtube_url)
+    web_fetchers = [
+        ("GenDownload API", fetch_via_gendownload),
+        ("AHM7xMakki API", fetch_via_ahm7xmakki),
+        ("Piped API", fetch_via_piped),
+        ("Cobalt API", fetch_via_cobalt_dynamic),
+        ("yt1s", fetch_via_yt1s),
+        ("y2mate", fetch_via_y2mate)
+    ]
+
+    for name, fetcher in web_fetchers:
+        dlink = fetcher(youtube_url, status_callback=status_callback)
         if dlink:
-            logger.info(f"Downloading from web API fallback: {dlink[:50]}...")
+            if status_callback: status_callback(f"📥 جاري سحب ملف الفيديو المباشر من {name}...")
+            logger.info(f"Downloading from web API fallback {name}: {dlink[:50]}...")
             try:
                 req_dl = urllib.request.Request(dlink, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
                 with urllib.request.urlopen(req_dl, timeout=30, context=ctx) as r:
@@ -345,12 +421,13 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                             if not chunk: break
                             f.write(chunk)
                 if os.path.getsize(final_mp4) > 100000:
-                    logger.info("SUCCESS download via Web API fallback")
+                    logger.info(f"SUCCESS download via Web API {name}")
+                    if status_callback: status_callback(f"✅ تم تحميل الفيديو بنجاح عبر {name}!")
                     return final_mp4, get_video_info(youtube_url)
             except Exception as e:
-                logger.warning(f"Failed to download from web API dlink: {e}")
+                logger.warning(f"Failed to download from web API {name} dlink: {e}")
 
-    # 3. طبقة Pytubefix (حل ذكي ومضمون جداً باستخدام client WEB الذي يوفر Streams منفصلة)
+    # 3. طبقة Pytubefix (حل ذكي ومضمون جداً مع دعم البروكسيات)
     if PYTUBEFIX_AVAILABLE:
         for attempt in range(3):
             try:
@@ -360,6 +437,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                     proxy_url = current_proxy if current_proxy.startswith('http') else f"http://{current_proxy}"
                     proxies = {'http': proxy_url, 'https': proxy_url}
                     
+                if status_callback: status_callback(f"🛡️ [طبقة Pytubefix] جاري المحاولة {attempt+1}/3 عبر البروكسي: {current_proxy or 'مباشر'}...")
                 logger.info(f"Trying pytubefix fallback (client WEB)... Attempt {attempt+1}, Proxy: {current_proxy}")
                 from pytubefix import YouTube
                 yt = YouTube(youtube_url, client='WEB', proxies=proxies)
@@ -367,6 +445,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                 a_stream = yt.streams.filter(type='audio').order_by('abr').desc().first()
                 
                 if v_stream and a_stream:
+                    if status_callback: status_callback("📥 جاري دمج مسارات الفيديو والصوت بشكل منفصل بواسطة Pytubefix...")
                     logger.info(f"Downloading with pytubefix video/audio separately...")
                     v_path = v_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_v.mp4")
                     a_path = a_stream.download(output_path=os.path.dirname(final_mp4), filename=f"{task_id}_a.mp4")
@@ -382,6 +461,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                     
                     if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
                         logger.info("SUCCESS download via pytubefix")
+                        if status_callback: status_callback("✅ تم تحميل ودمج المقطع بنجاح عبر Pytubefix!")
                         return final_mp4, get_video_info(youtube_url)
             except Exception as e:
                 logger.warning(f"Pytubefix fallback failed with proxy {current_proxy}: {e}")
@@ -406,6 +486,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
         client_idx += 1
         
         try:
+            if status_callback: status_callback(f"🔁 [طبقة yt-dlp البروكسيات] المحاولة {attempt+1}/{max_proxy_retries} عبر البروكسي ({current_proxy or 'مباشر'})...")
             logger.info(f"Trying yt-dlp with client: {client_list} (Attempt {attempt+1}/{max_proxy_retries}, Proxy: {current_proxy})")
             ydl_opts = {
                 'format': 'best/bestvideo+bestaudio/b',
@@ -439,8 +520,10 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
                 mp4_file = base + ".mp4"
                 if os.path.exists(mp4_file):
                     logger.info(f"SUCCESS download via yt-dlp {client_list} using proxy {current_proxy}")
+                    if status_callback: status_callback("✅ تم التحميل بنجاح عبر yt-dlp والبروكسي!")
                     return mp4_file, info
                 if os.path.exists(downloaded_file):
+                    if status_callback: status_callback("✅ تم التحميل بنجاح عبر yt-dlp!")
                     return downloaded_file, info
         except Exception as e:
             logger.warning(f"yt-dlp client {client_list} with proxy {current_proxy} failed: {e}")
@@ -453,11 +536,9 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str):
     if last_exception:
         logger.warning(f"All yt-dlp clients and proxies failed: {last_exception}")
 
-    # removed redundant static cobalt implementation
-
     raise RuntimeError("تعذر تحميل المقطع بعد تجربة جميع الحلول والطبقات الذكية. يرجى التأكد من الرابط.")
 
-def download_background_media(media_url: str, output_dir: str, task_id: str) -> str:
+def download_background_media(media_url: str, output_dir: str, task_id: str, status_callback=None) -> str:
     """
     تحميل مقطع الخلفية (يوتيوب، انستقرام، تيك توك، بنترست...)
     """
@@ -467,7 +548,7 @@ def download_background_media(media_url: str, output_dir: str, task_id: str) -> 
     video_id = extract_youtube_id(media_url)
 
     if video_id:
-        bg_path, _ = download_youtube_media(media_url, output_dir, f"{task_id}_bg")
+        bg_path, _ = download_youtube_media(media_url, output_dir, f"{task_id}_bg", status_callback=status_callback)
         return bg_path
 
     # المنصات الأخرى (بنترست، تيك توك، إلخ)
@@ -476,6 +557,7 @@ def download_background_media(media_url: str, output_dir: str, task_id: str) -> 
     
     for attempt in range(max_proxy_retries):
         current_proxy = proxy_manager.get_proxy()
+        if status_callback: status_callback(f"🖼️ [مقطع الخلفية] المحاولة {attempt+1}/{max_proxy_retries} عبر البروكسي ({current_proxy or 'مباشر'})...")
         ydl_opts = {
             'format': 'best/bestvideo+bestaudio/b',
             'outtmpl': out_template,
@@ -501,7 +583,9 @@ def download_background_media(media_url: str, output_dir: str, task_id: str) -> 
                 base, _ = os.path.splitext(downloaded_file)
                 mp4_file = base + ".mp4"
                 if os.path.exists(mp4_file):
+                    if status_callback: status_callback("✅ تم تحميل مقطع الخلفية بنجاح!")
                     return mp4_file
+                if status_callback: status_callback("✅ تم تحميل مقطع الخلفية بنجاح!")
                 return downloaded_file
         except Exception as e:
             logger.error(f"Background media download failed with proxy {current_proxy}: {e}")

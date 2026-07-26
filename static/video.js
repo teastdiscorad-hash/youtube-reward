@@ -280,7 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     showError('فقد الاتصال بالخادم. يرجى المحاولة مرة أخرى.');
                 }
             }
-        }, 2000);
+        }, 1000);
     }
 
     function showError(msg) {

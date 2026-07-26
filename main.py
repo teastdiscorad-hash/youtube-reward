@@ -391,16 +391,20 @@ def run_processing_job(
     start_time: float,
     end_time: Optional[float]
 ):
+    def update_status(msg: str):
+        if task_id in tasks_db:
+            tasks_db[task_id]["message"] = msg
+
     try:
         cleanup_old_files()
         tasks_db[task_id]["status"] = "downloading"
-        tasks_db[task_id]["message"] = "جاري تحميل مقطع اليوتيوب..."
+        update_status("🚀 بدء معالجة الطلب وفحص الطبقات الذكية...")
         
         # 1. تحميل مقطع اليوتيوب
-        raw_video_path, video_info = download_youtube_media(youtube_url, TEMP_DIR, task_id)
+        raw_video_path, video_info = download_youtube_media(youtube_url, TEMP_DIR, task_id, status_callback=update_status)
         
         tasks_db[task_id]["status"] = "processing"
-        tasks_db[task_id]["message"] = "جاري دمج الفيديو والصورة وتفرغ الشاشة السوداء بدقة (9:16)..."
+        update_status("⚙️ جاري دمج الفيديو والصورة وتفريغ الشاشة السوداء بدقة (9:16)...")
         
         # 2. إنشاء فيديو الشورتس
         output_filename = f"Short_{task_id}.mp4"
@@ -414,7 +418,8 @@ def run_processing_job(
             key_tolerance=key_tolerance,
             video_position=video_position,
             start_time=start_time,
-            end_time=end_time
+            end_time=end_time,
+            progress_callback=update_status
         )
         
         # تنظيف الملفات المؤقتة الخاصة بالطلب
@@ -511,18 +516,22 @@ def run_processing_job_video(
     end_time: Optional[float]
 ):
     from processor import create_shorts_video_from_video
+    def update_status(msg: str):
+        if task_id in tasks_db:
+            tasks_db[task_id]["message"] = msg
+
     try:
         cleanup_old_files()
         tasks_db[task_id]["status"] = "downloading"
-        tasks_db[task_id]["message"] = "جاري تحميل مقطع اليوتيوب الأساسي ومقطع الخلفية..."
+        update_status("🚀 بدء تحميل مقطع اليوتيوب الأساسي ومقطع الخلفية...")
         
         # 1. تحميل المقاطع
-        primary_video_path, _ = download_youtube_media(primary_url, TEMP_DIR, task_id + "_primary")
-        # استخدام download_background_media للخلفية لأنها تدعم يوتيوب وبنترست وتيك توك وانستقرام
-        bg_video_path = download_background_media(bg_url, TEMP_DIR, task_id + "_bg")
+        primary_video_path, _ = download_youtube_media(primary_url, TEMP_DIR, task_id + "_primary", status_callback=update_status)
+        update_status("🖼️ جاري تحميل مقطع الخلفية من المنصة الخارجية...")
+        bg_video_path = download_background_media(bg_url, TEMP_DIR, task_id + "_bg", status_callback=update_status)
         
         tasks_db[task_id]["status"] = "processing"
-        tasks_db[task_id]["message"] = "جاري دمج الفيديوهات والمزامنة وتفريغ الشاشة السوداء..."
+        update_status("⚙️ جاري دمج الفيديوهات والمزامنة وتفريغ الشاشة السوداء...")
         
         # 2. إنشاء فيديو الشورتس
         output_filename = f"Short_{task_id}.mp4"

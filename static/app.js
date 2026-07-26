@@ -233,8 +233,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
 
                 if (data.status === 'downloading' || data.status === 'processing') {
-                    statusTitle.textContent = data.status === 'downloading' ? 'جاري تحميل فيديو اليوتيوب...' : 'جاري دمج الفيديو والصورة وتفريغ الشاشة السوداء بدقة (9:16)...';
-                    statusDesc.textContent = data.message;
+                    if (statusTitle) statusTitle.textContent = data.status === 'downloading' ? 'جاري التحميل وفحص الطبقات...' : 'جاري المعالجة والدمج بـ FFmpeg...';
+                    if (statusDesc) statusDesc.textContent = data.message || 'جاري العمل...';
                 } else if (data.status === 'completed') {
                     clearInterval(interval);
                     statusBox.classList.add('hidden');
@@ -252,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) {
                 console.error('Polling error:', e);
             }
-        }, 2000);
+        }, 1000);
     }
 
     function showError(msg) {
