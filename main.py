@@ -284,18 +284,21 @@ async def debug_downloaders():
     test_pin = "https://pin.it/4xLWrFj5x"
     
     # 1. Test pytubefix
+    # 1. Test pytubefix with WEB client and env
+    import shutil
     try:
         if PYTUBEFIX_AVAILABLE:
-            yt = YouTube(test_url)
-            ys = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-            if ys:
-                results['pytubefix'] = f"Success! URL extracted: {ys.url[:50]}..."
-            else:
-                results['pytubefix'] = "Failed: No progressive mp4 stream found."
+            yt = YouTube(test_url, client='WEB')
+            results['pytubefix_web'] = f"Success! Title: {yt.title}"
         else:
-            results['pytubefix'] = "Not available."
+            results['pytubefix_web'] = "Not available."
     except Exception as e:
-        results['pytubefix'] = f"Exception: {e}\n{traceback.format_exc()}"
+        results['pytubefix_web'] = f"Exception: {e}\n{traceback.format_exc()}"
+        
+    results['env_check'] = {
+        'ffmpeg': shutil.which('ffmpeg') or 'Not Found',
+        'node': shutil.which('node') or 'Not Found'
+    }
         
     # 2. Test yt1s
     try:
