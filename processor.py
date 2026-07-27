@@ -132,7 +132,7 @@ def fetch_via_cobalt_fast(youtube_url: str):
 
 def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, status_callback=None):
     """
-    تحميل فيديو يوتيوب عبر مكتبة yt مع التجاوز الذكي لحظر البوتات والـ IP السحابي
+    تحميل فيديو يوتيوب مع نظام تجاوز حظر البوتات والـ IP السحابي لـ Render
     """
     os.makedirs(output_dir, exist_ok=True)
     final_mp4 = os.path.join(output_dir, f"{task_id}_raw.mp4")
@@ -191,15 +191,50 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, stat
             logger.warning(f"yt-dlp client {client_list} direct failed: {e}")
             last_exception = e
 
-    # 2. تجربة التخطي الذكي بالبروكسي عند حظر سيرفر Render (Sign in to confirm you're not a bot)
-    if status_callback: status_callback("🔄 [تجاوز الحظر] جاري تجربة البروكسي لتجاوز حظر البوتات...")
+    # 2. التجاوز السريع الفوري لـ Render عبر خوادم Invidious Stream (تتجاوز حظر الـ IP والبوتات فورا بدون كوكيز)
+    if video_id:
+        if status_callback: status_callback("⚡ [تجاوز الحظر السحابي] جاري التحميل الفوري عبر خادم وسيط...")
+        invidious_stream_servers = [
+            "https://invidious.nerdvpn.de",
+            "https://vid.pugices.pt",
+            "https://invidious.fdn.fr",
+            "https://inv.tux.pizza",
+            "https://invidious.drgns.space",
+            "https://invidious.lunar.icu"
+        ]
+        
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+        for base in invidious_stream_servers:
+            proxy_url = f"{base}/latest_version?id={video_id}&itag=18"
+            try:
+                logger.info(f"Trying Invidious fast stream proxy: {proxy_url}")
+                req = urllib.request.Request(proxy_url, headers={'User-Agent': MOBILE_USER_AGENTS[0]})
+                with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:
+                    if resp.getcode() == 200:
+                        with open(final_mp4, 'wb') as f:
+                            while True:
+                                chunk = resp.read(16384)
+                                if not chunk: break
+                                f.write(chunk)
+                        if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
+                            logger.info(f"SUCCESS download via Invidious fast stream {base}")
+                            if status_callback: status_callback("✅ تم التحميل بنجاح عبر التجاوز السريع!")
+                            return final_mp4, get_video_info(youtube_url)
+            except Exception as e:
+                logger.warning(f"Invidious stream proxy {base} failed: {e}")
+
+    # 3. تجربة التخطي بالبروكسيات الدوارة (Free Proxy Pool)
+    if status_callback: status_callback("🔄 [شبكة البروكسيات] جاري تجربة بروكسي سحابي مجاني...")
     for attempt in range(5):
         current_proxy = proxy_manager.get_proxy()
         if not current_proxy:
             break
         try:
             proxy_url = current_proxy if current_proxy.startswith('http') else f"http://{current_proxy}"
-            if status_callback: status_callback(f"🛡️ [بروكسي سحابي] محاولة {attempt+1}/5 عبر البروكسي...")
             ydl_opts = {
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': out_template,
@@ -227,29 +262,7 @@ def download_youtube_media(youtube_url: str, output_dir: str, task_id: str, stat
             logger.warning(f"Proxy attempt {attempt+1} failed: {e}")
             proxy_manager.remove_proxy(current_proxy)
 
-    # 3. خط الدفاع الأخير المباشر (Cobalt API Proxy)
-    if status_callback: status_callback("🌐 [طبقة Cobalt الوسيطة] جاري جلب الفيديو عبر خادم وسيط...")
-    dlink = fetch_via_cobalt_fast(youtube_url)
-    if dlink:
-        try:
-            req_dl = urllib.request.Request(dlink, headers={'User-Agent': 'Mozilla/5.0'})
-            import ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(req_dl, timeout=20, context=ctx) as r:
-                with open(final_mp4, 'wb') as f:
-                    while True:
-                        chunk = r.read(16384)
-                        if not chunk: break
-                        f.write(chunk)
-            if os.path.exists(final_mp4) and os.path.getsize(final_mp4) > 100000:
-                if status_callback: status_callback("✅ تم التحميل بنجاح عبر الخادم الوسيط!")
-                return final_mp4, get_video_info(youtube_url)
-        except Exception as e:
-            logger.warning(f"Cobalt fallback failed: {e}")
-
-    raise RuntimeError(f"تعذر تحميل المقطع بعد تجربة التجاوز: {last_exception}")
+    raise RuntimeError(f"تعذر تحميل المقطع بعد تجربة جميع طرق التجاوز: {last_exception}")
 
 def download_background_media(media_url: str, output_dir: str, task_id: str, status_callback=None) -> str:
     """
